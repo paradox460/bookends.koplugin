@@ -61,10 +61,18 @@ function OverlayWidget.buildTextWidget(text, line_configs, h_anchor, max_width)
         return line_configs[i] or line_configs[#line_configs] or { face = nil, bold = false }
     end
 
+    -- Apply smallcaps: uppercase text for lines with smallcaps=true
+    local function applyStyle(line_text, cfg)
+        if cfg.smallcaps then
+            return line_text:upper()
+        end
+        return line_text
+    end
+
     if #lines == 1 then
         local cfg = getConfig(1)
         local tw = TextWidget:new{
-            text = lines[1],
+            text = applyStyle(lines[1], cfg),
             face = cfg.face,
             bold = cfg.bold,
             max_width = max_width,
@@ -87,7 +95,7 @@ function OverlayWidget.buildTextWidget(text, line_configs, h_anchor, max_width)
     for i, line in ipairs(lines) do
         local cfg = getConfig(i)
         local tw = TextWidget:new{
-            text = line,
+            text = applyStyle(line, cfg),
             face = cfg.face,
             bold = cfg.bold,
             max_width = max_width,
@@ -116,8 +124,9 @@ function OverlayWidget.measureTextWidth(text, line_configs)
     for line in text:gmatch("([^\n]+)") do
         i = i + 1
         local cfg = line_configs[i] or line_configs[#line_configs] or { face = nil, bold = false }
+        local display_text = cfg.smallcaps and line:upper() or line
         local tw = TextWidget:new{
-            text = line,
+            text = display_text,
             face = cfg.face,
             bold = cfg.bold,
         }

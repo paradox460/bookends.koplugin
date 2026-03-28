@@ -84,6 +84,49 @@ function Bookends:markDirty()
     UIManager:setDirty(self.ui, "ui")
 end
 
+-- Style constants and helpers
+Bookends.STYLES = { "regular", "bold", "italic", "bolditalic", "smallcaps" }
+Bookends.STYLE_LABELS = {
+    regular = _("Regular"),
+    bold = _("Bold"),
+    italic = _("Italic"),
+    bolditalic = _("Bold Italic"),
+    smallcaps = _("Small Caps"),
+}
+
+-- Map a regular font filename to its italic variant (and vice versa)
+local _italic_variants = {
+    ["NotoSans-Regular.ttf"]  = "NotoSans-Italic.ttf",
+    ["NotoSans-Bold.ttf"]     = "NotoSans-BoldItalic.ttf",
+    ["NotoSerif-Regular.ttf"] = "NotoSerif-Italic.ttf",
+    ["NotoSerif-Bold.ttf"]    = "NotoSerif-BoldItalic.ttf",
+}
+
+function Bookends:resolveLineConfig(face_name, font_size, style)
+    style = style or "regular"
+    local bold = (style == "bold" or style == "bolditalic")
+    local resolved_face = face_name
+
+    if style == "italic" or style == "bolditalic" then
+        -- Try to find italic variant
+        local italic = _italic_variants[face_name]
+        if italic then
+            resolved_face = italic
+        end
+    end
+
+    local size = font_size
+    if style == "smallcaps" then
+        size = math.floor(font_size * 0.78)
+    end
+
+    return {
+        face = Font:getFace(resolved_face, size),
+        bold = bold,
+        smallcaps = (style == "smallcaps"),
+    }
+end
+
 -- Event handlers
 function Bookends:onPageUpdate() self:markDirty() end
 function Bookends:onPosUpdate() self:markDirty() end
@@ -145,19 +188,16 @@ function Bookends:paintTo(bb, x, y)
         local default_font_size = self:getPositionSetting(key, "font_size")
         local default_bold = self:getPositionSetting(key, "font_bold")
 
-        -- Build per-line config: { {face=, bold=}, {face=, bold=}, ... }
+        -- Build per-line config: { {face=, bold=, smallcaps=}, ... }
         local line_configs = {}
         for i = 1, #pos_settings.lines do
             local face_name = (pos_settings.line_font_face and pos_settings.line_font_face[i])
                 or default_face_name
             local font_size = (pos_settings.line_font_size and pos_settings.line_font_size[i])
                 or default_font_size
-            local bold = (pos_settings.line_bold and pos_settings.line_bold[i])
-                or default_bold
-            table.insert(line_configs, {
-                face = Font:getFace(face_name, font_size),
-                bold = bold or false,
-            })
+            local style = (pos_settings.line_style and pos_settings.line_style[i])
+                or "regular"
+            table.insert(line_configs, self:resolveLineConfig(face_name, font_size, style))
         end
 
         local w = OverlayWidget.measureTextWidth(text, line_configs)
@@ -381,7 +421,11 @@ function Bookends:buildPositionMenu(pos)
             end,
             hold_callback = function()
                 -- Long-press to remove line
-                table.remove(self.positions[pos.key].lines, i)
+                local ps = self.positions[pos.key]
+                table.remove(ps.lines, i)
+                if ps.line_style then table.remove(ps.line_style, i) end
+                if ps.line_font_size then table.remove(ps.line_font_size, i) end
+                if ps.line_font_face then table.remove(ps.line_font_face, i) end
                 self:savePositionSetting(pos.key)
                 self:markDirty()
             end,
@@ -406,52 +450,7 @@ function Bookends:buildPositionMenu(pos)
         enabled_func = function() return false end,
     })
 
-    -- Per-position overrides
-    table.insert(menu, {
-        text_func = function()
-            if self.positions[pos.key].font_face then
-                return _("Override font (active)")
-            end
-            return _("Override font")
-        end,
-        sub_item_table_func = function()
-            local items = self:buildFontMenu(
-                function() return self:getPositionSetting(pos.key, "font_face") end,
-                function(face)
-                    self.positions[pos.key].font_face = face
-                    self:savePositionSetting(pos.key)
-                    self:markDirty()
-                end)
-            table.insert(items, 1, {
-                text = _("Reset to default"),
-                callback = function()
-                    self.positions[pos.key].font_face = nil
-                    self:savePositionSetting(pos.key)
-                    self:markDirty()
-                end,
-            })
-            return items
-        end,
-    })
-    table.insert(menu, {
-        text_func = function()
-            if self.positions[pos.key].font_size then
-                return _("Override font size") .. " (" .. self.positions[pos.key].font_size .. ")"
-            end
-            return _("Override font size")
-        end,
-        keep_menu_open = true,
-        callback = function()
-            self:showSpinner(_("Font size for " .. pos.label),
-                self:getPositionSetting(pos.key, "font_size"), 8, 36,
-                self.defaults.font_size,
-                function(val)
-                    self.positions[pos.key].font_size = val
-                    self:savePositionSetting(pos.key)
-                    self:markDirty()
-                end)
-        end,
-    })
+    -- Per-position overrides (offsets only — font/size/style are per-line)
     table.insert(menu, {
         text_func = function()
             if self.positions[pos.key].v_offset then
@@ -516,18 +515,18 @@ function Bookends:editLineString(pos, line_idx)
     local current_text = pos_settings.lines[line_idx] or ""
 
     -- Per-line style state
-    pos_settings.line_bold = pos_settings.line_bold or {}
+    pos_settings.line_style = pos_settings.line_style or {}
     pos_settings.line_font_size = pos_settings.line_font_size or {}
     pos_settings.line_font_face = pos_settings.line_font_face or {}
 
-    local is_bold = pos_settings.line_bold[line_idx] or false
+    local line_style = pos_settings.line_style[line_idx] or "regular"
     local line_size = pos_settings.line_font_size[line_idx] -- nil = use default
     local line_face = pos_settings.line_font_face[line_idx] -- nil = use default
 
-    -- Style buttons using text_func so refreshButtons() picks up changes
-    local bold_button = {
+    -- Style cycle button
+    local style_button = {
         text_func = function()
-            return is_bold and _("Bold") or _("Regular")
+            return self.STYLE_LABELS[line_style] or _("Regular")
         end,
         callback = function() end,
     }
@@ -549,8 +548,15 @@ function Bookends:editLineString(pos, line_idx)
 
     local format_dialog
 
-    bold_button.callback = function()
-        is_bold = not is_bold
+    style_button.callback = function()
+        -- Cycle through styles
+        local styles = self.STYLES
+        for idx, s in ipairs(styles) do
+            if s == line_style then
+                line_style = styles[(idx % #styles) + 1]
+                break
+            end
+        end
         format_dialog:reinit()
     end
 
@@ -583,7 +589,7 @@ function Bookends:editLineString(pos, line_idx)
         input = current_text,
         buttons = {
             -- Row 1: style controls
-            { bold_button, size_button, font_button },
+            { style_button, size_button, font_button },
             -- Row 2: main actions
             {
                 {
@@ -592,9 +598,9 @@ function Bookends:editLineString(pos, line_idx)
                     callback = function()
                         if current_text == "" and (pos_settings.lines[line_idx] or "") == "" then
                             table.remove(pos_settings.lines, line_idx)
-                            table.remove(pos_settings.line_bold, line_idx)
-                            table.remove(pos_settings.line_font_size, line_idx)
-                            table.remove(pos_settings.line_font_face, line_idx)
+                            if pos_settings.line_style then table.remove(pos_settings.line_style, line_idx) end
+                            if pos_settings.line_font_size then table.remove(pos_settings.line_font_size, line_idx) end
+                            if pos_settings.line_font_face then table.remove(pos_settings.line_font_face, line_idx) end
                             self:savePositionSetting(pos.key)
                         end
                         UIManager:close(format_dialog)
@@ -625,14 +631,15 @@ function Bookends:editLineString(pos, line_idx)
                         local new_text = format_dialog:getInputText()
                         if new_text == "" then
                             table.remove(pos_settings.lines, line_idx)
-                            table.remove(pos_settings.line_bold, line_idx)
-                            table.remove(pos_settings.line_font_size, line_idx)
-                            table.remove(pos_settings.line_font_face, line_idx)
+                            if pos_settings.line_style then table.remove(pos_settings.line_style, line_idx) end
+                            if pos_settings.line_font_size then table.remove(pos_settings.line_font_size, line_idx) end
+                            if pos_settings.line_font_face then table.remove(pos_settings.line_font_face, line_idx) end
                         else
                             pos_settings.lines[line_idx] = new_text
-                            pos_settings.line_bold[line_idx] = is_bold or nil
-                            pos_settings.line_font_size[line_idx] = line_size -- nil = default
-                            pos_settings.line_font_face[line_idx] = line_face -- nil = default
+                            pos_settings.line_style = pos_settings.line_style or {}
+                            pos_settings.line_style[line_idx] = line_style ~= "regular" and line_style or nil
+                            pos_settings.line_font_size[line_idx] = line_size
+                            pos_settings.line_font_face[line_idx] = line_face
                         end
                         self:savePositionSetting(pos.key)
                         UIManager:close(format_dialog)
