@@ -44,7 +44,7 @@ end
 --- Build a TextWidget or MultiLineWidget for a single line or multi-line string.
 -- @param text string: the expanded text (may contain newlines)
 -- @param face font face object
--- @param bold boolean
+-- @param bold boolean or table: single bool for all lines, or {[1]=bool, [2]=bool, ...} per line
 -- @param h_anchor string: "left", "center", or "right"
 -- @param max_width number or nil: if set, truncate lines to this pixel width
 -- @return widget, width, height
@@ -58,11 +58,19 @@ function OverlayWidget.buildTextWidget(text, face, bold, h_anchor, max_width)
         return nil, 0, 0
     end
 
+    -- Helper: get bold for a given line index
+    local function getBold(i)
+        if type(bold) == "table" then
+            return bold[i] or false
+        end
+        return bold or false
+    end
+
     if #lines == 1 then
         local tw = TextWidget:new{
             text = lines[1],
             face = face,
-            bold = bold,
+            bold = getBold(1),
             max_width = max_width,
             truncate_with_ellipsis = max_width ~= nil,
         }
@@ -81,11 +89,11 @@ function OverlayWidget.buildTextWidget(text, face, bold, h_anchor, max_width)
     local line_entries = {}
     local max_w = 0
     local total_h = 0
-    for _, line in ipairs(lines) do
+    for i, line in ipairs(lines) do
         local tw = TextWidget:new{
             text = line,
             face = face,
-            bold = bold,
+            bold = getBold(i),
             max_width = max_width,
             truncate_with_ellipsis = max_width ~= nil,
         }
@@ -105,13 +113,22 @@ function OverlayWidget.buildTextWidget(text, face, bold, h_anchor, max_width)
 end
 
 --- Measure the width of the widest line in a text string.
+-- @param bold boolean or table: single bool for all lines, or per-line table
 function OverlayWidget.measureTextWidth(text, face, bold)
     local max_w = 0
+    local i = 0
     for line in text:gmatch("([^\n]+)") do
+        i = i + 1
+        local line_bold
+        if type(bold) == "table" then
+            line_bold = bold[i] or false
+        else
+            line_bold = bold or false
+        end
         local tw = TextWidget:new{
             text = line,
             face = face,
-            bold = bold,
+            bold = line_bold,
         }
         local w = tw:getSize().w
         tw:free()

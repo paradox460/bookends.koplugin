@@ -143,7 +143,14 @@ function Bookends:paintTo(bb, x, y)
         local face = Font:getFace(
             self:getPositionSetting(key, "font_face"),
             self:getPositionSetting(key, "font_size"))
-        local bold = self:getPositionSetting(key, "font_bold")
+        -- Per-line bold: use line_bold array if available, else fall back to position default
+        local pos_settings = self.positions[key]
+        local bold
+        if pos_settings.line_bold and #pos_settings.line_bold > 0 then
+            bold = pos_settings.line_bold -- table passed to buildTextWidget
+        else
+            bold = self:getPositionSetting(key, "font_bold")
+        end
         local w = OverlayWidget.measureTextWidth(text, face, bold)
         measurements[key] = { width = w, face = face, bold = bold }
     end
@@ -438,22 +445,6 @@ function Bookends:buildPositionMenu(pos)
     })
     table.insert(menu, {
         text_func = function()
-            local bold = self:getPositionSetting(pos.key, "font_bold")
-            if bold then
-                return _("Style: Bold")
-            end
-            return _("Style: Regular")
-        end,
-        keep_menu_open = true,
-        callback = function()
-            local current = self:getPositionSetting(pos.key, "font_bold")
-            self.positions[pos.key].font_bold = not current
-            self:savePositionSetting(pos.key)
-            self:markDirty()
-        end,
-    })
-    table.insert(menu, {
-        text_func = function()
             if self.positions[pos.key].v_offset then
                 return _("Override vertical offset") .. " (" .. self.positions[pos.key].v_offset .. ")"
             end
@@ -511,22 +502,48 @@ end
 
 function Bookends:editLineString(pos, line_idx)
     local IconPicker = require("icon_picker")
+    local pos_settings = self.positions[pos.key]
 
-    local current_text = self.positions[pos.key].lines[line_idx] or ""
+    local current_text = pos_settings.lines[line_idx] or ""
+
+    -- Per-line bold: stored in line_bold array
+    if not pos_settings.line_bold then
+        pos_settings.line_bold = {}
+    end
+    local is_bold = pos_settings.line_bold[line_idx] or false
+
+    -- The bold button — we hold a reference so we can update its text
+    local bold_button = {
+        text = is_bold and _("Style: Bold") or _("Style: Regular"),
+        callback = function() end, -- replaced below
+    }
 
     local format_dialog
+    -- Now wire the bold button callback (needs format_dialog reference)
+    bold_button.callback = function()
+        is_bold = not is_bold
+        bold_button.text = is_bold and _("Style: Bold") or _("Style: Regular")
+        format_dialog:refreshButtons()
+    end
+
     format_dialog = InputDialog:new{
-        title = pos.label .. " — " .. _("Line") .. " " .. line_idx,
+        title = pos.label .. " \xE2\x80\x94 " .. _("Line") .. " " .. line_idx,
         input = current_text,
         buttons = {
+            -- Row 1: style
+            { bold_button },
+            -- Row 2: main actions
             {
                 {
                     text = _("Cancel"),
                     id = "close",
                     callback = function()
-                        -- If line is empty and was just added, remove it
-                        if current_text == "" and (self.positions[pos.key].lines[line_idx] or "") == "" then
-                            table.remove(self.positions[pos.key].lines, line_idx)
+                        if current_text == "" and (pos_settings.lines[line_idx] or "") == "" then
+                            table.remove(pos_settings.lines, line_idx)
+                            -- Clean up line_bold too
+                            if pos_settings.line_bold then
+                                table.remove(pos_settings.line_bold, line_idx)
+                            end
                             self:savePositionSetting(pos.key)
                         end
                         UIManager:close(format_dialog)
@@ -556,9 +573,16 @@ function Bookends:editLineString(pos, line_idx)
                     callback = function()
                         local new_text = format_dialog:getInputText()
                         if new_text == "" then
-                            table.remove(self.positions[pos.key].lines, line_idx)
+                            table.remove(pos_settings.lines, line_idx)
+                            if pos_settings.line_bold then
+                                table.remove(pos_settings.line_bold, line_idx)
+                            end
                         else
-                            self.positions[pos.key].lines[line_idx] = new_text
+                            pos_settings.lines[line_idx] = new_text
+                            if not pos_settings.line_bold then
+                                pos_settings.line_bold = {}
+                            end
+                            pos_settings.line_bold[line_idx] = is_bold or nil
                         end
                         self:savePositionSetting(pos.key)
                         UIManager:close(format_dialog)
