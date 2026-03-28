@@ -325,7 +325,7 @@ end
 function Bookends:addToMainMenu(menu_items)
     menu_items.bookends = {
         text = _("Bookends"),
-        sorting_hint = "setting",
+        sorting_hint = "typeset",
         sub_item_table = self:buildMainMenu(),
     }
 end
