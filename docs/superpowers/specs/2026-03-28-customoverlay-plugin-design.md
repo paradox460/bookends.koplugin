@@ -299,7 +299,7 @@ View modules paint after the footer, so overlays layer on top.
 ```
 plugins/bookends.koplugin/
 ├── _meta.lua          -- plugin metadata (~10 lines)
-├── main.lua           -- CustomOverlay class, settings, events, menu (~400 lines)
+├── main.lua           -- Bookends class, settings, events, menu (~400 lines)
 ├── overlay_widget.lua -- widget building, positioning, overlap logic (~250 lines)
 ├── tokens.lua         -- token expansion engine (~150 lines)
 └── icon_picker.lua    -- icon browser UI (~150 lines)
