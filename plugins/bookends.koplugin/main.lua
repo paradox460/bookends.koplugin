@@ -405,7 +405,7 @@ function Bookends:buildPositionMenu(pos)
     local menu = {}
     local lines = self.positions[pos.key].lines
 
-    -- Line entries
+    -- Line entries (no keep_menu_open so menu refreshes after editing)
     for i, line in ipairs(lines) do
         table.insert(menu, {
             text_func = function()
@@ -415,7 +415,6 @@ function Bookends:buildPositionMenu(pos)
                 end
                 return _("Line") .. " " .. i .. ": " .. preview
             end,
-            keep_menu_open = true,
             callback = function()
                 self:editLineString(pos, i)
             end,
@@ -435,7 +434,6 @@ function Bookends:buildPositionMenu(pos)
     -- Add line
     table.insert(menu, {
         text = _("Add line"),
-        keep_menu_open = true,
         callback = function()
             local idx = #self.positions[pos.key].lines + 1
             table.insert(self.positions[pos.key].lines, "")
