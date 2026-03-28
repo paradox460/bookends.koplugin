@@ -657,7 +657,7 @@ function Bookends:editLineString(pos, line_idx)
 
     font_button.callback = function()
         format_dialog:onCloseKeyboard()
-        self:showFontPicker(function(font_filename)
+        self:showFontPicker(line_face or self:getPositionSetting(pos.key, "font_face"), function(font_filename)
             line_face = font_filename
             format_dialog:reinit()
         end)
@@ -732,13 +732,26 @@ function Bookends:editLineString(pos, line_idx)
     format_dialog:onShowKeyboard()
 end
 
-function Bookends:showFontPicker(on_select)
+function Bookends:showFontPicker(current_face, on_select)
     local Menu = require("ui/widget/menu")
-    local items = self:buildFontMenu(
-        function() return "" end, -- no current selection
-        function(font_filename)
-            on_select(font_filename)
-        end)
+    local cre = require("document/credocument"):engineInit()
+    local FontList = require("fontlist")
+    local face_list = cre.getFontFaces()
+    local items = {}
+    for _, face_name in ipairs(face_list) do
+        local font_filename, font_faceindex = cre.getFontFaceFilenameAndFaceIndex(face_name)
+        if not font_filename then
+            font_filename, font_faceindex = cre.getFontFaceFilenameAndFaceIndex(face_name, nil, true)
+        end
+        if font_filename then
+            local display_name = FontList:getLocalizedFontName(font_filename, font_faceindex) or face_name
+            local prefix = (font_filename == current_face) and "\xE2\x9C\x93 " or "   " -- ✓
+            table.insert(items, {
+                text = prefix .. display_name,
+                font_filename = font_filename,
+            })
+        end
+    end
 
     local menu
     menu = Menu:new{
@@ -748,8 +761,8 @@ function Bookends:showFontPicker(on_select)
         height = math.floor(Screen:getHeight() * 0.8),
         onMenuChoice = function(_, item)
             UIManager:close(menu)
-            if item.callback then
-                item.callback()
+            if item.font_filename then
+                on_select(item.font_filename)
             end
         end,
     }
