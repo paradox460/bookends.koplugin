@@ -515,7 +515,7 @@ function Bookends:buildPositionMenu(pos)
 
     -- Add line
     table.insert(menu, {
-        text = _("Add line"),
+        text = "+ " .. _("Add line"),
         callback = function()
             local idx = #self.positions[pos.key].lines + 1
             table.insert(self.positions[pos.key].lines, "")
