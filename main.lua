@@ -430,7 +430,7 @@ function Bookends:buildMainMenu()
         keep_menu_open = true,
         enabled_func = function() return self.enabled end,
         callback = function()
-            self:showSpinner(_("Default vertical offset (px)"), self.defaults.v_offset, 0, 200, 35,
+            self:showSpinner(_("Default vertical offset (px)"), self.defaults.v_offset, 0, 999, 35,
                 function(val)
                     self.defaults.v_offset = val
                     G_reader_settings:saveSetting("bookends_v_offset", val)
@@ -443,7 +443,7 @@ function Bookends:buildMainMenu()
         keep_menu_open = true,
         enabled_func = function() return self.enabled end,
         callback = function()
-            self:showSpinner(_("Default horizontal offset (px)"), self.defaults.h_offset, 0, 200, 10,
+            self:showSpinner(_("Default horizontal offset (px)"), self.defaults.h_offset, 0, 999, 18,
                 function(val)
                     self.defaults.h_offset = val
                     G_reader_settings:saveSetting("bookends_h_offset", val)
@@ -534,7 +534,7 @@ function Bookends:buildPositionMenu(pos)
         keep_menu_open = true,
         callback = function()
             self:showSpinner(_("Vertical offset for " .. pos.label),
-                self:getPositionSetting(pos.key, "v_offset"), 0, 200,
+                self:getPositionSetting(pos.key, "v_offset"), 0, 999,
                 self.defaults.v_offset,
                 function(val)
                     self.positions[pos.key].v_offset = val
@@ -555,7 +555,7 @@ function Bookends:buildPositionMenu(pos)
             keep_menu_open = true,
             callback = function()
                 self:showSpinner(_("Horizontal offset for " .. pos.label),
-                    self:getPositionSetting(pos.key, "h_offset"), 0, 200,
+                    self:getPositionSetting(pos.key, "h_offset"), 0, 999,
                     self.defaults.h_offset,
                     function(val)
                         self.positions[pos.key].h_offset = val
