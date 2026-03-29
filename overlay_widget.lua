@@ -147,10 +147,41 @@ function OverlayWidget.measureTextWidth(text, line_configs)
 end
 
 --- Calculate max_width for each position in a row, applying overlap prevention.
--- Center gets priority. Returns { left=max_w|nil, center=max_w|nil, right=max_w|nil }.
-function OverlayWidget.calculateRowLimits(left_w, center_w, right_w, screen_w, gap, h_offset)
+-- @param priority string: "center" (default) = center gets priority;
+--                         "sides" = left/right get priority, center is truncated first.
+-- Returns { left=max_w|nil, center=max_w|nil, right=max_w|nil }.
+function OverlayWidget.calculateRowLimits(left_w, center_w, right_w, screen_w, gap, h_offset, priority)
     local limits = { left = nil, center = nil, right = nil }
 
+    if priority == "sides" then
+        -- Sides-first: left and right claim their natural width, center gets the remainder.
+        -- Center is positioned symmetrically, so its max width is constrained by
+        -- whichever side is wider (not the sum of both).
+        local left_actual = left_w and math.min(left_w, math.max(0, screen_w - h_offset)) or 0
+        local right_actual = right_w and math.min(right_w, math.max(0, screen_w - h_offset)) or 0
+        if left_actual > 0 and right_actual > 0 then
+            -- Both sides: each gets at most half minus gap
+            local half = math.max(0, math.floor(screen_w / 2) - math.floor(gap / 2) - h_offset)
+            if left_actual > half then
+                limits.left = half
+                left_actual = half
+            end
+            if right_actual > half then
+                limits.right = half
+                right_actual = half
+            end
+        end
+        if center_w then
+            local wider_side = math.max(left_actual, right_actual)
+            local center_max = math.max(0, screen_w - 2 * (wider_side + h_offset + gap))
+            if center_w > center_max then
+                limits.center = center_max
+            end
+        end
+        return limits
+    end
+
+    -- Default: center-first priority
     if center_w then
         local center_max = math.max(0, screen_w - 2 * gap)
         if center_w > center_max then

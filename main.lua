@@ -55,6 +55,7 @@ function Bookends:loadSettings()
         v_offset  = G_reader_settings:readSetting("bookends_v_offset", 35),
         h_offset  = G_reader_settings:readSetting("bookends_h_offset", 18),
         overlap_gap = G_reader_settings:readSetting("bookends_overlap_gap", 50),
+        truncation_priority = G_reader_settings:readSetting("bookends_truncation_priority", "center"),
     }
 
     -- Default position configurations (used on first run)
@@ -115,6 +116,7 @@ function Bookends:loadPreset(preset)
         G_reader_settings:saveSetting("bookends_v_offset", self.defaults.v_offset)
         G_reader_settings:saveSetting("bookends_h_offset", self.defaults.h_offset)
         G_reader_settings:saveSetting("bookends_overlap_gap", self.defaults.overlap_gap)
+        G_reader_settings:saveSetting("bookends_truncation_priority", self.defaults.truncation_priority)
     end
     if preset.positions then
         for _, pos in ipairs(self.POSITIONS) do
@@ -298,7 +300,8 @@ function Bookends:paintTo(bb, x, y)
         local max_h_offset = math.max(left_h_offset or 0, right_h_offset or 0)
 
         local limits = OverlayWidget.calculateRowLimits(
-            left_w, center_w, right_w, screen_w, gap, max_h_offset)
+            left_w, center_w, right_w, screen_w, gap, max_h_offset,
+            self.defaults.truncation_priority)
 
         -- Phase 4: Build widgets with truncation limits
         local row_keys = {
@@ -480,6 +483,22 @@ function Bookends:buildMainMenu()
                                 G_reader_settings:saveSetting("bookends_overlap_gap", val)
                                 self:markDirty()
                             end)
+                    end,
+                },
+                {
+                    text = _("Prioritise left/right and truncate long center text"),
+                    keep_menu_open = true,
+                    checked_func = function()
+                        return self.defaults.truncation_priority == "sides"
+                    end,
+                    callback = function()
+                        if self.defaults.truncation_priority == "sides" then
+                            self.defaults.truncation_priority = "center"
+                        else
+                            self.defaults.truncation_priority = "sides"
+                        end
+                        G_reader_settings:saveSetting("bookends_truncation_priority", self.defaults.truncation_priority)
+                        self:markDirty()
                     end,
                 },
             }
