@@ -60,9 +60,9 @@ function Bookends:loadSettings()
     -- Default position configurations (used on first run)
     local default_positions = {
         tl = { lines = { "%A \xE2\x8B\xAE %T" }, line_font_size = { [1] = 12 } },
-        tc = { lines = { "%k \xC2\xB7 %a %d" }, line_font_size = { [1] = 14 }, line_style = { [1] = "bold" } },
+        tc = { lines = { "\xE2\x8F\xB2 %k \xC2\xB7 %a %d" }, line_font_size = { [1] = 14 }, line_style = { [1] = "bold" } },
         tr = { lines = { "%C" }, line_style = { [1] = "bold" } },
-        bl = { lines = { "%R session" }, v_offset = 16 },
+        bl = { lines = { "\xE2\x8F\xB3 %R session" }, v_offset = 16 },
         bc = { lines = { "Page %c of %t" }, line_font_size = { [1] = 16 }, v_offset = 35 },
         br = { lines = { "%B %W" }, line_font_size = { [1] = 10 }, v_offset = 14 },
     }
