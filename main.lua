@@ -53,24 +53,38 @@ function Bookends:loadSettings()
         font_size = G_reader_settings:readSetting("bookends_font_size", footer_settings.text_font_size),
         font_bold = G_reader_settings:readSetting("bookends_font_bold", false),
         v_offset  = G_reader_settings:readSetting("bookends_v_offset", 35),
-        h_offset  = G_reader_settings:readSetting("bookends_h_offset", 10),
+        h_offset  = G_reader_settings:readSetting("bookends_h_offset", 18),
         overlap_gap = G_reader_settings:readSetting("bookends_overlap_gap", 10),
     }
 
+    -- Default position configurations (used on first run)
+    local default_positions = {
+        tl = { lines = { "%A \xE2\x8B\xAE %T" }, line_font_size = { [1] = 12 } },
+        tc = { lines = { "%k \xC2\xB7 %a %d" }, line_font_size = { [1] = 14 }, line_style = { [1] = "bold" } },
+        tr = { lines = { "%C" }, line_style = { [1] = "bold" } },
+        bl = { lines = { "%R session" }, v_offset = 16 },
+        bc = { lines = { "Page %c of %t" }, line_font_size = { [1] = 16 }, v_offset = 35 },
+        br = { lines = { "%B %W" }, line_font_size = { [1] = 10 }, v_offset = 14 },
+    }
+
     -- Per-position settings
-    -- Migrate old single-format to lines array
     self.positions = {}
     for _, pos in ipairs(self.POSITIONS) do
-        local saved = G_reader_settings:readSetting("bookends_pos_" .. pos.key, {})
-        -- Migration: old format string → lines array
-        if saved.format and saved.format ~= "" and not saved.lines then
-            saved.lines = { saved.format }
-            saved.format = nil
+        local saved = G_reader_settings:readSetting("bookends_pos_" .. pos.key)
+        if saved then
+            -- Migration: old format string → lines array
+            if saved.format and saved.format ~= "" and not saved.lines then
+                saved.lines = { saved.format }
+                saved.format = nil
+            end
+            if not saved.lines then
+                saved.lines = {}
+            end
+            self.positions[pos.key] = saved
+        else
+            -- First run: use default configuration
+            self.positions[pos.key] = default_positions[pos.key] or { lines = {} }
         end
-        if not saved.lines then
-            saved.lines = {}
-        end
-        self.positions[pos.key] = saved
     end
 end
 
