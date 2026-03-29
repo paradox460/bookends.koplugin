@@ -52,20 +52,19 @@ function Bookends:loadSettings()
         font_face = G_reader_settings:readSetting("bookends_font_face", Font.fontmap["ffont"]),
         font_size = G_reader_settings:readSetting("bookends_font_size", footer_settings.text_font_size),
         font_bold = G_reader_settings:readSetting("bookends_font_bold", false),
-        v_offset  = G_reader_settings:readSetting("bookends_v_offset", Screen:scaleBySize(12)),
-        h_offset  = G_reader_settings:readSetting("bookends_h_offset", Screen:scaleBySize(6)),
-        overlap_gap = G_reader_settings:readSetting("bookends_overlap_gap", Screen:scaleBySize(16)),
+        v_offset  = G_reader_settings:readSetting("bookends_v_offset", 35),
+        h_offset  = G_reader_settings:readSetting("bookends_h_offset", 18),
+        overlap_gap = G_reader_settings:readSetting("bookends_overlap_gap", 50),
     }
 
     -- Default position configurations (used on first run)
-    -- Font sizes use footer size as reference; offsets use scaleBySize for DPI independence
     local default_positions = {
-        tl = { lines = { "%A \xE2\x8B\xAE %T" }, line_font_size = { [1] = footer_settings.text_font_size } },
-        tc = { lines = { "%k \xC2\xB7 %a %d" }, line_font_size = { [1] = footer_settings.text_font_size + 2 }, line_style = { [1] = "bold" } },
+        tl = { lines = { "%A \xE2\x8B\xAE %T" }, line_font_size = { [1] = 12 } },
+        tc = { lines = { "%k \xC2\xB7 %a %d" }, line_font_size = { [1] = 14 }, line_style = { [1] = "bold" } },
         tr = { lines = { "%C" }, line_style = { [1] = "bold" } },
-        bl = { lines = { "\xE2\x8F\xB3 %R session" }, v_offset = Screen:scaleBySize(5) },
-        bc = { lines = { "Page %c of %t" }, line_font_size = { [1] = footer_settings.text_font_size + 4 }, v_offset = Screen:scaleBySize(12) },
-        br = { lines = { "%B %W" }, line_font_size = { [1] = footer_settings.text_font_size - 2 }, v_offset = Screen:scaleBySize(5) },
+        bl = { lines = { "\xE2\x8F\xB3 %R session" }, v_offset = 16 },
+        bc = { lines = { "Page %c of %t" }, line_font_size = { [1] = 16 }, v_offset = 35 },
+        br = { lines = { "%B %W" }, line_font_size = { [1] = 10 }, v_offset = 14 },
     }
 
     -- Per-position settings
@@ -451,7 +450,7 @@ function Bookends:buildMainMenu()
                     text = _("Default vertical offset"),
                     keep_menu_open = true,
                     callback = function()
-                        self:showSpinner(_("Default vertical offset (px)"), self.defaults.v_offset, 0, 999, Screen:scaleBySize(12),
+                        self:showSpinner(_("Default vertical offset (px)"), self.defaults.v_offset, 0, 999, 35,
                             function(val)
                                 self.defaults.v_offset = val
                                 G_reader_settings:saveSetting("bookends_v_offset", val)
@@ -463,7 +462,7 @@ function Bookends:buildMainMenu()
                     text = _("Default horizontal offset"),
                     keep_menu_open = true,
                     callback = function()
-                        self:showSpinner(_("Default horizontal offset (px)"), self.defaults.h_offset, 0, 999, Screen:scaleBySize(6),
+                        self:showSpinner(_("Default horizontal offset (px)"), self.defaults.h_offset, 0, 999, 18,
                             function(val)
                                 self.defaults.h_offset = val
                                 G_reader_settings:saveSetting("bookends_h_offset", val)
@@ -475,7 +474,7 @@ function Bookends:buildMainMenu()
                     text = _("Overlap gap"),
                     keep_menu_open = true,
                     callback = function()
-                        self:showSpinner(_("Minimum gap between texts (px)"), self.defaults.overlap_gap, 0, 999, Screen:scaleBySize(16),
+                        self:showSpinner(_("Minimum gap between texts (px)"), self.defaults.overlap_gap, 0, 999, 50,
                             function(val)
                                 self.defaults.overlap_gap = val
                                 G_reader_settings:saveSetting("bookends_overlap_gap", val)
