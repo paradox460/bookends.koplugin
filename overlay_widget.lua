@@ -5,6 +5,14 @@ local Screen = Device.screen
 
 local OverlayWidget = {}
 
+-- Default TextWidget options for overlay text.
+-- use_book_text_color ensures text matches the book's color scheme
+-- (compatible with color theme patches like koreader-color-themes).
+local function textWidgetOpts(t)
+    t.use_book_text_color = true
+    return t
+end
+
 --- Simple multi-line widget that paints TextWidgets stacked vertically.
 -- Avoids VerticalGroup to ensure reliable rendering on e-ink devices.
 local MultiLineWidget = {}
@@ -63,13 +71,13 @@ function OverlayWidget.buildTextWidget(text, line_configs, h_anchor, max_width)
 
     if #lines == 1 then
         local cfg = getConfig(1)
-        local tw = TextWidget:new{
+        local tw = TextWidget:new(textWidgetOpts{
             text = lines[1],
             face = cfg.face,
             bold = cfg.bold,
             max_width = max_width,
             truncate_with_ellipsis = max_width ~= nil,
-        }
+        })
         local size = tw:getSize()
         return tw, size.w, size.h
     end
@@ -86,13 +94,13 @@ function OverlayWidget.buildTextWidget(text, line_configs, h_anchor, max_width)
     local total_h = 0
     for i, line in ipairs(lines) do
         local cfg = getConfig(i)
-        local tw = TextWidget:new{
+        local tw = TextWidget:new(textWidgetOpts{
             text = line,
             face = cfg.face,
             bold = cfg.bold,
             max_width = max_width,
             truncate_with_ellipsis = max_width ~= nil,
-        }
+        })
         local size = tw:getSize()
         table.insert(line_entries, { widget = tw, w = size.w, h = size.h })
         if size.w > max_w then max_w = size.w end
@@ -116,11 +124,11 @@ function OverlayWidget.measureTextWidth(text, line_configs)
     for line in text:gmatch("([^\n]+)") do
         i = i + 1
         local cfg = line_configs[i] or line_configs[#line_configs] or { face = nil, bold = false }
-        local tw = TextWidget:new{
+        local tw = TextWidget:new(textWidgetOpts{
             text = line,
             face = cfg.face,
             bold = cfg.bold,
-        }
+        })
         local w = tw:getSize().w
         tw:free()
         if w > max_w then max_w = w end
