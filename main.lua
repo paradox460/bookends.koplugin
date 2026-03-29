@@ -54,7 +54,7 @@ function Bookends:loadSettings()
         font_bold = G_reader_settings:readSetting("bookends_font_bold", false),
         v_offset  = G_reader_settings:readSetting("bookends_v_offset", 35),
         h_offset  = G_reader_settings:readSetting("bookends_h_offset", 18),
-        overlap_gap = G_reader_settings:readSetting("bookends_overlap_gap", 10),
+        overlap_gap = G_reader_settings:readSetting("bookends_overlap_gap", 50),
     }
 
     -- Default position configurations (used on first run)
@@ -467,7 +467,7 @@ function Bookends:buildMainMenu()
         keep_menu_open = true,
         enabled_func = function() return self.enabled end,
         callback = function()
-            self:showSpinner(_("Minimum gap between texts (px)"), self.defaults.overlap_gap, 0, 100, 10,
+            self:showSpinner(_("Minimum gap between texts (px)"), self.defaults.overlap_gap, 0, 999, 50,
                 function(val)
                     self.defaults.overlap_gap = val
                     G_reader_settings:saveSetting("bookends_overlap_gap", val)
