@@ -256,7 +256,7 @@ function Bookends:paintTo(bb, x, y)
         local default_font_size = self:getPositionSetting(key, "font_size")
         local default_bold = self:getPositionSetting(key, "font_bold")
 
-        -- Build per-line config: { {face=, bold=, smallcaps=}, ... }
+        -- Build per-line config: { {face=, bold=, v_nudge=, h_nudge=}, ... }
         local line_configs = {}
         for i = 1, #pos_settings.lines do
             local face_name = (pos_settings.line_font_face and pos_settings.line_font_face[i])
@@ -265,7 +265,10 @@ function Bookends:paintTo(bb, x, y)
                 or default_font_size
             local style = (pos_settings.line_style and pos_settings.line_style[i])
                 or "regular"
-            table.insert(line_configs, self:resolveLineConfig(face_name, font_size, style))
+            local cfg = self:resolveLineConfig(face_name, font_size, style)
+            cfg.v_nudge = (pos_settings.line_v_nudge and pos_settings.line_v_nudge[i]) or 0
+            cfg.h_nudge = (pos_settings.line_h_nudge and pos_settings.line_h_nudge[i]) or 0
+            table.insert(line_configs, cfg)
         end
 
         local w = OverlayWidget.measureTextWidth(text, line_configs)
@@ -321,6 +324,14 @@ function Bookends:paintTo(bb, x, y)
                     local px, py = OverlayWidget.computeCoordinates(
                         pos_def.h_anchor, pos_def.v_anchor,
                         w, h, screen_w, screen_h, v_off, h_off)
+
+                    -- Apply first line's nudge for single-line widgets
+                    -- (MultiLineWidget handles per-line nudges internally)
+                    local cfg1 = m.line_configs[1]
+                    if cfg1 and not widget.lines then -- not a MultiLineWidget
+                        px = px + (cfg1.h_nudge or 0)
+                        py = py + (cfg1.v_nudge or 0)
+                    end
 
                     self.widget_cache[key] = { widget = widget, x = px, y = py }
                     widget:paintTo(bb, x + px, y + py)
@@ -591,10 +602,14 @@ function Bookends:editLineString(pos, line_idx)
     pos_settings.line_style = pos_settings.line_style or {}
     pos_settings.line_font_size = pos_settings.line_font_size or {}
     pos_settings.line_font_face = pos_settings.line_font_face or {}
+    pos_settings.line_v_nudge = pos_settings.line_v_nudge or {}
+    pos_settings.line_h_nudge = pos_settings.line_h_nudge or {}
 
     local line_style = pos_settings.line_style[line_idx] or "regular"
     local line_size = pos_settings.line_font_size[line_idx] -- nil = use default
     local line_face = pos_settings.line_font_face[line_idx] -- nil = use default
+    local line_v_nudge = pos_settings.line_v_nudge[line_idx] or 0
+    local line_h_nudge = pos_settings.line_h_nudge[line_idx] or 0
 
     -- Style cycle button
     local style_button = {
@@ -657,13 +672,65 @@ function Bookends:editLineString(pos, line_idx)
         end)
     end
 
+    -- Nudge buttons (1px per tap)
+    local nudge_step = 1
+    local nudge_up = {
+        text = "\xE2\x96\xB2",  -- ▲
+        callback = function() end,
+    }
+    local nudge_down = {
+        text = "\xE2\x96\xBC",  -- ▼
+        callback = function() end,
+    }
+    local nudge_left = {
+        text = "\xE2\x97\x80",  -- ◀
+        callback = function() end,
+    }
+    local nudge_right = {
+        text = "\xE2\x96\xB6",  -- ▶
+        callback = function() end,
+    }
+    local nudge_label = {
+        text_func = function()
+            if line_v_nudge == 0 and line_h_nudge == 0 then
+                return _("Position")
+            end
+            return line_h_nudge .. "," .. line_v_nudge
+        end,
+        callback = function() end,  -- reset, wired below
+    }
+
+    nudge_up.callback = function()
+        line_v_nudge = line_v_nudge - nudge_step
+        format_dialog:reinit()
+    end
+    nudge_down.callback = function()
+        line_v_nudge = line_v_nudge + nudge_step
+        format_dialog:reinit()
+    end
+    nudge_left.callback = function()
+        line_h_nudge = line_h_nudge - nudge_step
+        format_dialog:reinit()
+    end
+    nudge_right.callback = function()
+        line_h_nudge = line_h_nudge + nudge_step
+        format_dialog:reinit()
+    end
+    nudge_label.callback = function()
+        line_v_nudge = 0
+        line_h_nudge = 0
+        format_dialog:reinit()
+    end
+
     format_dialog = InputDialog:new{
         title = pos.label .. " \xE2\x80\x94 " .. _("Line") .. " " .. line_idx,
         input = current_text,
         buttons = {
             -- Row 1: style controls
             { style_button, size_button, font_button },
-            -- Row 2: main actions
+            -- Row 2: position nudge
+            { nudge_left, nudge_up, nudge_label, nudge_down, nudge_right },
+            -- Row 3: main actions
             {
                 {
                     text = _("Cancel"),
@@ -678,6 +745,8 @@ function Bookends:editLineString(pos, line_idx)
                             if pos_settings.line_style then table.remove(pos_settings.line_style, line_idx) end
                             if pos_settings.line_font_size then table.remove(pos_settings.line_font_size, line_idx) end
                             if pos_settings.line_font_face then table.remove(pos_settings.line_font_face, line_idx) end
+                            if pos_settings.line_v_nudge then table.remove(pos_settings.line_v_nudge, line_idx) end
+                            if pos_settings.line_h_nudge then table.remove(pos_settings.line_h_nudge, line_idx) end
                             self:savePositionSetting(pos.key)
                         end
                         UIManager:close(format_dialog)
@@ -712,12 +781,18 @@ function Bookends:editLineString(pos, line_idx)
                             if pos_settings.line_style then table.remove(pos_settings.line_style, line_idx) end
                             if pos_settings.line_font_size then table.remove(pos_settings.line_font_size, line_idx) end
                             if pos_settings.line_font_face then table.remove(pos_settings.line_font_face, line_idx) end
+                            if pos_settings.line_v_nudge then table.remove(pos_settings.line_v_nudge, line_idx) end
+                            if pos_settings.line_h_nudge then table.remove(pos_settings.line_h_nudge, line_idx) end
                         else
                             pos_settings.lines[line_idx] = new_text
                             pos_settings.line_style = pos_settings.line_style or {}
                             pos_settings.line_style[line_idx] = line_style ~= "regular" and line_style or nil
                             pos_settings.line_font_size[line_idx] = line_size
                             pos_settings.line_font_face[line_idx] = line_face
+                            pos_settings.line_v_nudge = pos_settings.line_v_nudge or {}
+                            pos_settings.line_h_nudge = pos_settings.line_h_nudge or {}
+                            pos_settings.line_v_nudge[line_idx] = line_v_nudge ~= 0 and line_v_nudge or nil
+                            pos_settings.line_h_nudge[line_idx] = line_h_nudge ~= 0 and line_h_nudge or nil
                         end
                         self:savePositionSetting(pos.key)
                         UIManager:close(format_dialog)
@@ -749,6 +824,8 @@ function Bookends:showLineManageDialog(pos, line_idx, touchmenu_instance)
         if ps.line_style then table.remove(ps.line_style, line_idx) end
         if ps.line_font_size then table.remove(ps.line_font_size, line_idx) end
         if ps.line_font_face then table.remove(ps.line_font_face, line_idx) end
+        if ps.line_v_nudge then table.remove(ps.line_v_nudge, line_idx) end
+        if ps.line_h_nudge then table.remove(ps.line_h_nudge, line_idx) end
         self:savePositionSetting(pos.key)
         self:markDirty()
         refreshMenu()
@@ -764,6 +841,12 @@ function Bookends:showLineManageDialog(pos, line_idx, touchmenu_instance)
         end
         if ps.line_font_face then
             ps.line_font_face[a], ps.line_font_face[b] = ps.line_font_face[b], ps.line_font_face[a]
+        end
+        if ps.line_v_nudge then
+            ps.line_v_nudge[a], ps.line_v_nudge[b] = ps.line_v_nudge[b], ps.line_v_nudge[a]
+        end
+        if ps.line_h_nudge then
+            ps.line_h_nudge[a], ps.line_h_nudge[b] = ps.line_h_nudge[b], ps.line_h_nudge[a]
         end
         self:savePositionSetting(pos.key)
         self:markDirty()

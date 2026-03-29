@@ -25,13 +25,13 @@ end
 function MultiLineWidget:paintTo(bb, x, y)
     local y_offset = 0
     for _, entry in ipairs(self.lines) do
-        local lx = x
+        local lx = x + (entry.h_nudge or 0)
         if self.align == "center" then
-            lx = x + math.floor((self.width - entry.w) / 2)
+            lx = x + math.floor((self.width - entry.w) / 2) + (entry.h_nudge or 0)
         elseif self.align == "right" then
-            lx = x + self.width - entry.w
+            lx = x + self.width - entry.w + (entry.h_nudge or 0)
         end
-        entry.widget:paintTo(bb, lx, y + y_offset)
+        entry.widget:paintTo(bb, lx, y + y_offset + (entry.v_nudge or 0))
         y_offset = y_offset + entry.h
     end
 end
@@ -102,7 +102,10 @@ function OverlayWidget.buildTextWidget(text, line_configs, h_anchor, max_width)
             truncate_with_ellipsis = max_width ~= nil,
         })
         local size = tw:getSize()
-        table.insert(line_entries, { widget = tw, w = size.w, h = size.h })
+        table.insert(line_entries, {
+            widget = tw, w = size.w, h = size.h,
+            v_nudge = cfg.v_nudge or 0, h_nudge = cfg.h_nudge or 0,
+        })
         if size.w > max_w then max_w = size.w end
         total_h = total_h + size.h
     end
