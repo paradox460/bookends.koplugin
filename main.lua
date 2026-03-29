@@ -718,26 +718,31 @@ function Bookends:editLineString(pos, line_idx)
     }
 
     nudge_up.callback = function()
+        format_dialog:onCloseKeyboard()
         line_v_nudge = line_v_nudge - nudge_step
         applyLivePreview()
         format_dialog:reinit()
     end
     nudge_down.callback = function()
+        format_dialog:onCloseKeyboard()
         line_v_nudge = line_v_nudge + nudge_step
         applyLivePreview()
         format_dialog:reinit()
     end
     nudge_left.callback = function()
+        format_dialog:onCloseKeyboard()
         line_h_nudge = line_h_nudge - nudge_step
         applyLivePreview()
         format_dialog:reinit()
     end
     nudge_right.callback = function()
+        format_dialog:onCloseKeyboard()
         line_h_nudge = line_h_nudge + nudge_step
         applyLivePreview()
         format_dialog:reinit()
     end
     nudge_label.callback = function()
+        format_dialog:onCloseKeyboard()
         line_v_nudge = 0
         line_h_nudge = 0
         applyLivePreview()
@@ -747,11 +752,20 @@ function Bookends:editLineString(pos, line_idx)
     format_dialog = InputDialog:new{
         title = pos.label .. " \xE2\x80\x94 " .. _("Line") .. " " .. line_idx,
         input = current_text,
+        edited_callback = function()
+            -- Live preview of text changes
+            local live_text = format_dialog:getInputText()
+            if live_text and live_text ~= "" then
+                pos_settings.lines[line_idx] = live_text
+                self:savePositionSetting(pos.key)
+                self:markDirty()
+            end
+        end,
         buttons = {
             -- Row 1: style controls
             { style_button, size_button, font_button },
-            -- Row 2: position nudge
-            { nudge_left, nudge_up, nudge_label, nudge_down, nudge_right },
+            -- Row 2: position nudge (L/R on left, label center, U/D on right)
+            { nudge_left, nudge_right, nudge_label, nudge_up, nudge_down },
             -- Row 3: main actions
             {
                 {
