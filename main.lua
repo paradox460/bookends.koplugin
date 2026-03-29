@@ -406,11 +406,8 @@ function Bookends:buildMainMenu()
         })
     end
 
-    -- Separator
-    table.insert(menu, {
-        text = "\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80",
-        enabled_func = function() return false end,
-    })
+    -- Add separator after last position entry
+    menu[#menu].separator = true
 
     -- Global defaults
     table.insert(menu, {
@@ -475,13 +472,10 @@ function Bookends:buildMainMenu()
                     self:markDirty()
                 end)
         end,
+        separator = true,
     })
 
     -- Presets
-    table.insert(menu, {
-        text = "\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80",
-        enabled_func = function() return false end,
-    })
     table.insert(menu, {
         text = _("Presets"),
         enabled_func = function() return self.enabled end,
@@ -526,12 +520,7 @@ function Bookends:buildPositionMenu(pos)
             self:savePositionSetting(pos.key)
             self:editLineString(pos, idx)
         end,
-    })
-
-    -- Separator
-    table.insert(menu, {
-        text = "\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80\xE2\x94\x80",
-        enabled_func = function() return false end,
+        separator = true,
     })
 
     -- Per-position overrides (offsets only — font/size/style are per-line)
