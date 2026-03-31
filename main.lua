@@ -94,6 +94,12 @@ function Bookends:onDispatcherRegisterActions()
         title = _("Toggle bookends"),
         reader = true,
     })
+    Dispatcher:registerAction("cycle_bookends_preset", {
+        category = "none",
+        event = "CycleBookendsPreset",
+        title = _("Cycle bookends preset"),
+        reader = true,
+    })
     Dispatcher:registerAction("set_bookends", {
         category = "string",
         event = "SetBookends",
@@ -114,6 +120,30 @@ end
 function Bookends:onSetBookends(new_state)
     self.enabled = new_state
     G_reader_settings:saveSetting("bookends_enabled", self.enabled)
+    self:markDirty()
+    return true
+end
+
+function Bookends:onCycleBookendsPreset()
+    local presets = self.preset_obj.presets
+    local names = {}
+    for name in pairs(presets) do
+        table.insert(names, name)
+    end
+    if #names == 0 then return true end
+    table.sort(names)
+    local idx = 1
+    local last = G_reader_settings:readSetting("bookends_last_cycled_preset")
+    if last then
+        for i, name in ipairs(names) do
+            if name == last then
+                idx = (i % #names) + 1
+                break
+            end
+        end
+    end
+    G_reader_settings:saveSetting("bookends_last_cycled_preset", names[idx])
+    self:loadPreset(presets[names[idx]])
     self:markDirty()
     return true
 end
