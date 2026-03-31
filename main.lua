@@ -94,10 +94,25 @@ function Bookends:onDispatcherRegisterActions()
         title = _("Toggle bookends"),
         reader = true,
     })
+    Dispatcher:registerAction("set_bookends", {
+        category = "string",
+        event = "SetBookends",
+        title = _("Set bookends"),
+        reader = true,
+        args = {true, false},
+        toggle = {_("on"), _("off")},
+    })
 end
 
 function Bookends:onToggleBookends()
     self.enabled = not self.enabled
+    G_reader_settings:saveSetting("bookends_enabled", self.enabled)
+    self:markDirty()
+    return true
+end
+
+function Bookends:onSetBookends(new_state)
+    self.enabled = new_state
     G_reader_settings:saveSetting("bookends_enabled", self.enabled)
     self:markDirty()
     return true
