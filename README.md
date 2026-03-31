@@ -18,17 +18,13 @@ Six positions: **Top-left**, **Top-center**, **Top-right**, **Bottom-left**, **B
 
 ### Screenshots
 
-| Title page | Speed Reader preset |
-|:---:|:---:|
-| ![Title page](screenshots/title-page.png) | ![Speed Reader](screenshots/speed-reader.png) |
+| Title page | Speed Reader preset | Classic Alternating preset |
+|:---:|:---:|:---:|
+| ![Title page](screenshots/title-page.png) | ![Speed Reader](screenshots/speed-reader.png) | ![Classic Alternating](screenshots/classic-alternating.png) |
 
-| Classic Alternating preset | Rich Detail preset |
-|:---:|:---:|
-| ![Classic Alternating](screenshots/classic-alternating.png) | ![Rich Detail](screenshots/rich-detail.png) |
-
-| Main menu | Adjust margins |
-|:---:|:---:|
-| ![Main menu](screenshots/main-menu.png) | ![Adjust margins](screenshots/adjust-margins.png) |
+| Rich Detail preset | Main menu | Adjust margins |
+|:---:|:---:|:---:|
+| ![Rich Detail](screenshots/rich-detail.png) | ![Main menu](screenshots/main-menu.png) | ![Adjust margins](screenshots/adjust-margins.png) |
 
 | Line editor | Icon picker | Token picker |
 |:---:|:---:|:---:|
