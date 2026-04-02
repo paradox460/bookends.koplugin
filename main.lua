@@ -297,11 +297,20 @@ function Bookends:loadPreset(preset)
     end
     if preset.progress_bars then
         self.progress_bars = util.tableDeepCopy(preset.progress_bars)
+    else
+        -- Reset progress bars when loading presets that don't include them
+        local bar_defaults = {
+            enabled = false, type = "book", style = "solid", height = 20,
+            v_anchor = "bottom", margin_v = 0, margin_left = 0, margin_right = 0,
+            chapter_ticks = "off",
+        }
+        self.progress_bars = {}
         for i = 1, 4 do
-            if self.progress_bars[i] then
-                self.settings:saveSetting("progress_bar_" .. i, self.progress_bars[i])
-            end
+            self.progress_bars[i] = util.tableDeepCopy(bar_defaults)
         end
+    end
+    for i = 1, 4 do
+        self.settings:saveSetting("progress_bar_" .. i, self.progress_bars[i])
     end
     self:markDirty()
 end
