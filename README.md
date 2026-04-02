@@ -30,6 +30,10 @@ Six positions: **Top-left**, **Top-center**, **Top-right**, **Bottom-left**, **B
 |:---:|:---:|:---:|
 | ![Line editor](screenshots/line-editor.png) | ![Icon picker](screenshots/icon-picker.png) | ![Token picker](screenshots/token-picker.png) |
 
+| Progress bar styles | Progress bar line editor |
+|:---:|:---:|
+| ![Progress bar styles](screenshots/progress-bars-styles.png) | ![Progress bar line editor](screenshots/progress-bars-line-editor.png) |
+
 ### Quick start
 
 1. Copy `bookends.koplugin/` to your KOReader plugins directory
@@ -118,6 +122,29 @@ Tokens are placeholders that expand to live values. Insert them by typing `%` fo
 | `%m` | RAM usage | *33%* |
 
 Page tokens respect **stable page numbers** and **hidden flows** (non-linear EPUB content). Time-left and reading speed tokens use the **statistics plugin**. Session timer and pages reset each time you wake the device.
+
+#### Progress bars
+
+| Token | Description |
+|-------|-------------|
+| `%bar` | Progress bar (type configured in line editor) |
+
+Add a `%bar` token to any line to render an inline progress bar. The bar auto-fills available space and can be mixed with text (e.g. `%p %bar`). Use the bar controls in the line editor to set:
+
+- **Type** — Chapter, Book, Book+ (top-level ticks), Book++ (top 2 level ticks)
+- **Style** — Border, Solid, Rounded, Metro
+
+### Full-width progress bars
+
+Up to 4 independent progress bars rendered as dedicated layers behind text. Configure via **Full width progress bars** in the Bookends menu.
+
+- **Anchor** — Top, Bottom, Left (vertical), Right (vertical)
+- **Fill direction** — Left to right, Right to left, Top to bottom, Bottom to top
+- **Style** — Solid, Bordered, Rounded, Metro
+- **Chapter ticks** — Off, Top level, Top 2 levels (book type only)
+- **Thickness** and **margins** with real-time nudge adjustment
+
+Progress on EPUB documents updates smoothly per screen turn using pixel-level position tracking. Chapter tick marks vary in thickness by TOC depth.
 
 ### Smart features
 
