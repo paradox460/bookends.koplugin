@@ -591,9 +591,12 @@ function OverlayWidget.paintProgressBar(bb, x, y, w, h, fraction, ticks, style, 
     if w < 1 or h < 1 then return end
     fraction = math.max(0, math.min(1, fraction or 0))
     local vertical = orientation == "vertical"
-    -- Custom colors from KOReader status bar color patch (if installed)
+    -- Custom colors
     local custom_fill = colors and colors.fill
     local custom_bg = colors and colors.bg
+    local custom_track = colors and colors.track
+    local custom_tick = colors and colors.tick
+    local invert_read_ticks = colors and colors.invert_read_ticks
 
     -- Helper: paint a rect, swapping axes for vertical
     local function pr(rx, ry, rw, rh, color)
@@ -628,6 +631,8 @@ function OverlayWidget.paintProgressBar(bb, x, y, w, h, fraction, ticks, style, 
 
         local metro_fill = custom_fill or Blitbuffer.COLOR_DARK_GRAY
         local metro_bg = custom_bg or Blitbuffer.COLOR_GRAY
+        local metro_track = custom_track or metro_fill
+        local metro_tick = custom_tick or metro_track
         -- Background line (lighter)
         pr(line_ox, line_y, line_len, line_thick, metro_bg)
         -- Filled line (darker)
@@ -645,13 +650,13 @@ function OverlayWidget.paintProgressBar(bb, x, y, w, h, fraction, ticks, style, 
             if tick_pos > 0 and tick_pos < line_len then
                 if tick_depth <= 1 then
                     -- From top of bar down through trunk
-                    pr(line_ox + tick_pos, oy, line_thick, line_y + line_thick - oy, metro_fill)
+                    pr(line_ox + tick_pos, oy, line_thick, line_y + line_thick - oy, metro_tick)
                 else
                     -- Below trunk (same thickness as trunk)
                     local below_y = line_y + line_thick
                     local below_h = oy + thickness - below_y
                     if below_h > 0 then
-                        pr(line_ox + tick_pos, below_y, line_thick, below_h, metro_fill)
+                        pr(line_ox + tick_pos, below_y, line_thick, below_h, metro_tick)
                     end
                 end
             end
@@ -668,7 +673,7 @@ function OverlayWidget.paintProgressBar(bb, x, y, w, h, fraction, ticks, style, 
 
         -- Start circle (empty ring, trunk colour)
         local start_cx = reverse and (line_ox + line_len - start_r) or (line_ox - start_r)
-        paintCircle(start_cx, oy, start_r, metro_fill)
+        paintCircle(start_cx, oy, start_r, metro_track)
         local ring_border = line_thick
         local inner_r = start_r - ring_border
         if inner_r > 0 then
@@ -677,13 +682,13 @@ function OverlayWidget.paintProgressBar(bb, x, y, w, h, fraction, ticks, style, 
 
         -- End circle (filled, trunk colour, same size as start)
         local end_cx = reverse and (line_ox - start_r) or (line_ox + line_len - start_r)
-        paintCircle(end_cx, oy, start_r, metro_fill)
+        paintCircle(end_cx, oy, start_r, metro_track)
 
-        -- Current position dot (filled black, smaller)
+        -- Current position dot (uses tick colour)
         local pos_on_line = reverse and (line_len - line_fill) or line_fill
         local dot_cx = line_ox + pos_on_line - dot_r
         local dot_cy = oy + math.floor((thickness - dot_r * 2) / 2)
-        paintCircle(dot_cx, dot_cy, dot_r, Blitbuffer.COLOR_BLACK)
+        paintCircle(dot_cx, dot_cy, dot_r, custom_tick or Blitbuffer.COLOR_BLACK)
 
     elseif style == "solid" then
         local solid_fill = custom_fill or Blitbuffer.COLOR_GRAY_5
@@ -701,7 +706,14 @@ function OverlayWidget.paintProgressBar(bb, x, y, w, h, fraction, ticks, style, 
             local tick_pos = math.floor(length * tick_frac)
             if tick_pos > 0 and tick_pos < length then
                 local in_fill = tick_pos >= fill_start and tick_pos < fill_start + fill_len
-                local tick_color = in_fill and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
+                local tick_color
+                if custom_tick then
+                    tick_color = custom_tick
+                elseif invert_read_ticks == false then
+                    tick_color = Blitbuffer.COLOR_BLACK
+                else
+                    tick_color = in_fill and Blitbuffer.COLOR_WHITE or Blitbuffer.COLOR_BLACK
+                end
                 pr(ox + tick_pos, oy, tick_w, thickness, tick_color)
             end
         end
@@ -761,7 +773,7 @@ function OverlayWidget.paintProgressBar(bb, x, y, w, h, fraction, ticks, style, 
                 if reverse then tick_frac = 1 - tick_frac end
                 local tick_pos = math.floor(inner_len * tick_frac)
                 if tick_pos > 0 and tick_pos < inner_len then
-                    pr(inner_ox + tick_pos, inner_oy, tick_w, inner_thick, Blitbuffer.COLOR_BLACK)
+                    pr(inner_ox + tick_pos, inner_oy, tick_w, inner_thick, custom_tick or Blitbuffer.COLOR_BLACK)
                 end
             end
         end

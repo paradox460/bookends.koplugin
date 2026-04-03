@@ -523,20 +523,18 @@ function Bookends:paintTo(bb, x, y)
     if self.dirty then
         self._tick_cache = nil
     end
-    -- Read custom bar colors from KOReader status bar color patch (if installed)
+    -- Progress bar colors from settings
     local bar_colors
-    local footer_settings = self.ui.view.footer and self.ui.view.footer.settings
-    if footer_settings then
+    local bc = self.settings:readSetting("bar_colors")
+    if bc then
         local Blitbuffer = require("ffi/blitbuffer")
-        local style_key = footer_settings.progress_style_thin
-            and "progress_style_thin_colors" or "progress_style_thick_colors"
-        local color_settings = footer_settings[style_key]
-        if color_settings and (color_settings.fillcolor or color_settings.bgcolor) then
-            bar_colors = {
-                fill = color_settings.fillcolor and Blitbuffer.Color8(color_settings.fillcolor) or nil,
-                bg = color_settings.bgcolor and Blitbuffer.Color8(color_settings.bgcolor) or nil,
-            }
-        end
+        bar_colors = {
+            fill = bc.fill and Blitbuffer.Color8(bc.fill) or nil,
+            bg = bc.bg and Blitbuffer.Color8(bc.bg) or nil,
+            track = bc.track and Blitbuffer.Color8(bc.track) or nil,
+            tick = bc.tick and Blitbuffer.Color8(bc.tick) or nil,
+            invert_read_ticks = bc.invert_read_ticks,
+        }
     end
     for bar_idx, bar_cfg in ipairs(self.progress_bars or {}) do
         if bar_cfg.enabled then
@@ -1127,6 +1125,13 @@ function Bookends:buildMainMenu()
                     separator = true,
                 },
                 {
+                    text = _("Progress bar colours"),
+                    sub_item_table_func = function()
+                        return self:buildBarColorsMenu()
+                    end,
+                    separator = true,
+                },
+                {
                     text = _("Check for updates"),
                     keep_menu_open = true,
                     callback = function()
@@ -1465,6 +1470,119 @@ function Bookends:showBarMarginAdjuster(bar_cfg, bar_idx)
         },
     }
     UIManager:show(margin_dialog)
+end
+
+function Bookends:buildBarColorsMenu()
+    local bc = self.settings:readSetting("bar_colors") or {}
+
+    local function saveColors()
+        if not bc.fill and not bc.bg and not bc.track and not bc.tick and not bc.invert_read_ticks then
+            self.settings:delSetting("bar_colors")
+        else
+            self.settings:saveSetting("bar_colors", bc)
+        end
+        self:markDirty()
+    end
+
+    local function colorSpinner(title, field, default_pct, touchmenu_instance)
+        UIManager:show(SpinWidget:new{
+            title_text = title,
+            value = bc[field] and math.floor((0xFF - bc[field]) * 100 / 0xFF) or default_pct,
+            value_min = 0,
+            value_max = 100,
+            default_value = default_pct,
+            unit = "% " .. _("black"),
+            callback = function(spin)
+                bc[field] = 0xFF - math.floor(spin.value * 0xFF / 100)
+                saveColors()
+                if touchmenu_instance then touchmenu_instance:updateItems() end
+            end,
+        })
+    end
+
+    local function pctLabel(field, default_pct)
+        if bc[field] then
+            return math.floor((0xFF - bc[field]) * 100 / 0xFF) .. "%"
+        end
+        return _("default") .. " (" .. default_pct .. "%)"
+    end
+
+    return {
+        {
+            text_func = function()
+                return _("Read colour") .. ": " .. pctLabel("fill", 75)
+            end,
+            keep_menu_open = true,
+            callback = function(touchmenu_instance)
+                colorSpinner(_("Read colour (% black)"), "fill", 75, touchmenu_instance)
+            end,
+            hold_callback = function(touchmenu_instance)
+                bc.fill = nil; saveColors()
+                if touchmenu_instance then touchmenu_instance:updateItems() end
+            end,
+        },
+        {
+            text_func = function()
+                return _("Unread colour") .. ": " .. pctLabel("bg", 25)
+            end,
+            keep_menu_open = true,
+            callback = function(touchmenu_instance)
+                colorSpinner(_("Unread colour (% black)"), "bg", 25, touchmenu_instance)
+            end,
+            hold_callback = function(touchmenu_instance)
+                bc.bg = nil; saveColors()
+                if touchmenu_instance then touchmenu_instance:updateItems() end
+            end,
+        },
+        {
+            text_func = function()
+                return _("Metro track colour") .. ": " .. pctLabel("track", 75)
+            end,
+            keep_menu_open = true,
+            callback = function(touchmenu_instance)
+                colorSpinner(_("Metro track colour (% black)"), "track", 75, touchmenu_instance)
+            end,
+            hold_callback = function(touchmenu_instance)
+                bc.track = nil; saveColors()
+                if touchmenu_instance then touchmenu_instance:updateItems() end
+            end,
+        },
+        {
+            text_func = function()
+                return _("Tick colour") .. ": " .. pctLabel("tick", 100)
+            end,
+            keep_menu_open = true,
+            callback = function(touchmenu_instance)
+                colorSpinner(_("Tick colour (% black)"), "tick", 100, touchmenu_instance)
+            end,
+            hold_callback = function(touchmenu_instance)
+                bc.tick = nil; saveColors()
+                if touchmenu_instance then touchmenu_instance:updateItems() end
+            end,
+        },
+        {
+            text = _("Invert tick colour on read portion"),
+            checked_func = function() return bc.invert_read_ticks ~= false end,
+            callback = function()
+                if bc.invert_read_ticks == false then
+                    bc.invert_read_ticks = nil
+                else
+                    bc.invert_read_ticks = false
+                end
+                saveColors()
+            end,
+        },
+        {
+            text = _("Reset all to defaults"),
+            keep_menu_open = true,
+            callback = function(touchmenu_instance)
+                bc = {}
+                self.settings:delSetting("bar_colors")
+                self:markDirty()
+                if touchmenu_instance then touchmenu_instance:updateItems() end
+            end,
+        },
+    }
 end
 
 function Bookends:buildPositionMenu(pos)
