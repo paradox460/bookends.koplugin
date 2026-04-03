@@ -1488,13 +1488,13 @@ function Bookends:buildBarColorsMenu()
     local function colorSpinner(title, field, default_pct, touchmenu_instance)
         UIManager:show(SpinWidget:new{
             title_text = title,
-            value = bc[field] and math.floor((0xFF - bc[field]) * 100 / 0xFF) or default_pct,
+            value = bc[field] and math.floor((0xFF - bc[field]) * 100 / 0xFF + 0.5) or default_pct,
             value_min = 0,
             value_max = 100,
             default_value = default_pct,
             unit = "% " .. _("black"),
             callback = function(spin)
-                bc[field] = 0xFF - math.floor(spin.value * 0xFF / 100)
+                bc[field] = 0xFF - math.floor(spin.value * 0xFF / 100 + 0.5)
                 saveColors()
                 if touchmenu_instance then touchmenu_instance:updateItems() end
             end,
@@ -1503,7 +1503,7 @@ function Bookends:buildBarColorsMenu()
 
     local function pctLabel(field, default_pct)
         if bc[field] then
-            return math.floor((0xFF - bc[field]) * 100 / 0xFF) .. "%"
+            return math.floor((0xFF - bc[field]) * 100 / 0xFF + 0.5) .. "%"
         end
         return _("default") .. " (" .. default_pct .. "%)"
     end
