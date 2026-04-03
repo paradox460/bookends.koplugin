@@ -139,25 +139,17 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
         local is_cre = ui.rolling ~= nil
         bar_info = {}
 
-        -- Book progress
+        -- Book progress (page-based, matches KOReader footer)
         local book_pct
-        if is_cre and bar_doc.getCurrentPos then
-            local pos = bar_doc:getCurrentPos()
-            local height = bar_doc.info and bar_doc.info.doc_height or 0
-            if height > 0 then
-                book_pct = math.max(0, math.min(1, pos / height))
-            end
-        else
-            local raw_total = bar_doc:getPageCount()
-            if raw_total and raw_total > 0 then
-                if bar_doc:hasHiddenFlows() then
-                    local flow = bar_doc:getPageFlow(bar_pageno)
-                    local flow_total = bar_doc:getTotalPagesInFlow(flow)
-                    local flow_page = bar_doc:getPageNumberInFlow(bar_pageno)
-                    book_pct = flow_total > 0 and (flow_page / flow_total) or 0
-                else
-                    book_pct = bar_pageno / raw_total
-                end
+        local raw_total = bar_doc:getPageCount()
+        if raw_total and raw_total > 0 then
+            if bar_doc:hasHiddenFlows() then
+                local flow = bar_doc:getPageFlow(bar_pageno)
+                local flow_total = bar_doc:getTotalPagesInFlow(flow)
+                local flow_page = bar_doc:getPageNumberInFlow(bar_pageno)
+                book_pct = flow_total > 0 and (flow_page / flow_total) or 0
+            else
+                book_pct = bar_pageno / raw_total
             end
         end
 

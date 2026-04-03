@@ -560,25 +560,18 @@ function Bookends:paintTo(bb, x, y)
                 local is_cre = self.ui.rolling ~= nil
 
                 if bar_cfg.type == "book" then
-                    if is_cre and doc.getCurrentPos then
-                        local pos = doc:getCurrentPos()
-                        local height = doc.info and doc.info.doc_height or 0
-                        if height > 0 then
-                            pct = math.max(0, math.min(1, pos / height))
+                    -- Use page-based progress to match KOReader's footer bar
+                    local raw_total = doc:getPageCount()
+                    if raw_total and raw_total > 0 then
+                        if doc:hasHiddenFlows() then
+                            local flow = doc:getPageFlow(pageno_local)
+                            local flow_total = doc:getTotalPagesInFlow(flow)
+                            local flow_page = doc:getPageNumberInFlow(pageno_local)
+                            pct = flow_total > 0 and (flow_page / flow_total) or 0
+                        else
+                            pct = pageno_local / raw_total
                         end
-                    else
-                        local raw_total = doc:getPageCount()
-                        if raw_total and raw_total > 0 then
-                            if doc:hasHiddenFlows() then
-                                local flow = doc:getPageFlow(pageno_local)
-                                local flow_total = doc:getTotalPagesInFlow(flow)
-                                local flow_page = doc:getPageNumberInFlow(pageno_local)
-                                pct = flow_total > 0 and (flow_page / flow_total) or 0
-                            else
-                                pct = pageno_local / raw_total
-                            end
-                            pct = math.max(0, math.min(1, pct))
-                        end
+                        pct = math.max(0, math.min(1, pct))
                     end
                     -- Chapter tick marks (cached — static for the document)
                     local tick_level = bar_cfg.chapter_ticks
