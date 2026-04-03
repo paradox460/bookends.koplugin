@@ -160,7 +160,7 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
             local toc_ticks = ui.toc:getTocTicks() or {}
             local max_depth = ui.toc:getMaxDepth() or 1
             for depth, pages in ipairs(toc_ticks) do
-                local tick_w = math.max(1, max_depth - depth + 1)
+                local tick_w = math.max(1, (max_depth - depth + 1) * 2 - 1)
                 for _, page in ipairs(pages) do
                     if page > 1 then
                         local tick_frac = page / raw_total

@@ -359,7 +359,7 @@ function Bookends:_computeTickCache()
     local ticks = {}
     -- Use page-based fractions (matches KOReader's footer progress bar)
     for depth, pages in ipairs(toc_ticks) do
-        local tick_w = math.max(1, max_depth - depth + 1)
+        local tick_w = math.max(1, (max_depth - depth + 1) * 2 - 1)
         for _, page in ipairs(pages) do
             if page > 1 then
                 local tick_frac = page / raw_total
