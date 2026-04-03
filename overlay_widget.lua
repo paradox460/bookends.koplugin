@@ -500,12 +500,8 @@ function OverlayWidget.paintProgressBar(bb, x, y, w, h, fraction, ticks, style, 
 
         local metro_track = custom_track or Blitbuffer.COLOR_DARK_GRAY
         local metro_fill = custom_fill or Blitbuffer.COLOR_DARK_GRAY
-        -- Track line (all one colour)
+        -- Track line (uniform colour — progress shown by dot only)
         pr(line_ox, line_y, line_len, line_thick, metro_track)
-        -- Read portion overlay
-        if line_fill > 0 then
-            pr(line_ox + line_fill_start, line_y, line_fill, line_thick, metro_fill)
-        end
 
         -- Chapter ticks: depth 1 above line (connected to trunk), depth 2 below
         for _, tick in ipairs(ticks or {}) do
