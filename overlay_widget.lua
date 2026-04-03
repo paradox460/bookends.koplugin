@@ -590,6 +590,8 @@ function OverlayWidget.paintProgressBar(bb, x, y, w, h, fraction, ticks, style, 
         local border_fill = custom_fill or Blitbuffer.COLOR_DARK_GRAY
         local border_bg = custom_bg or Blitbuffer.COLOR_WHITE
         local border = 1
+        local margin_h = math.max(1, math.floor(thickness * 0.15))
+        local margin_v = math.max(1, math.floor(thickness * 0.05))
         local min_dim = vertical and w or h
         local radius = style == "rounded" and math.floor(min_dim / 2) or 0
         -- Background + border (use real coordinates for rounded rect API)
@@ -598,10 +600,12 @@ function OverlayWidget.paintProgressBar(bb, x, y, w, h, fraction, ticks, style, 
         else
             bb:paintRect(x, y, w, h, border_bg)
         end
-        local inner_ox = ox + border + 1
-        local inner_oy = oy + border + 1
-        local inner_len = length - 2 * (border + 1)
-        local inner_thick = thickness - 2 * (border + 1)
+        local h_inset = radius > 0 and radius or (border + margin_h)
+        local v_inset = border + margin_v
+        local inner_ox = ox + h_inset
+        local inner_oy = oy + v_inset
+        local inner_len = length - 2 * h_inset
+        local inner_thick = thickness - 2 * v_inset
         if inner_len > 0 and inner_thick > 0 then
             local fill_len = math.floor(inner_len * fraction)
             if radius > 0 then
