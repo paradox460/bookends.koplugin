@@ -498,12 +498,11 @@ function OverlayWidget.paintProgressBar(bb, x, y, w, h, fraction, ticks, style, 
         local line_fill = math.floor(line_len * fraction)
         local line_fill_start = reverse and (line_len - line_fill) or 0
 
-        local metro_fill = custom_fill or Blitbuffer.COLOR_DARK_GRAY
-        local metro_bg = custom_bg or Blitbuffer.COLOR_GRAY
         local metro_track = custom_track or Blitbuffer.COLOR_DARK_GRAY
-        -- Background line
-        pr(line_ox, line_y, line_len, line_thick, custom_track or metro_bg)
-        -- Filled line (darker)
+        local metro_fill = custom_fill or Blitbuffer.COLOR_DARK_GRAY
+        -- Track line (all one colour)
+        pr(line_ox, line_y, line_len, line_thick, metro_track)
+        -- Read portion overlay
         if line_fill > 0 then
             pr(line_ox + line_fill_start, line_y, line_fill, line_thick, metro_fill)
         end
