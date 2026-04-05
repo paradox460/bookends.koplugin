@@ -140,14 +140,8 @@ function Bookends:init()
     self.dirty = true
     self.position_cache = {}
 
-    -- Preset system
-    local Presets = require("ui/presets")
-    self.preset_obj = {
-        presets = self.settings:readSetting("presets", {}),
-        dispatcher_name = "load_bookends_preset",
-        buildPreset = function() return self:buildPreset() end,
-        loadPreset = function(preset) self:loadPreset(preset) end,
-    }
+    -- Migrate embedded presets to individual files (one-time)
+    self:migratePresetsToFiles()
 
     -- Register gesture/dispatcher actions
     self:onDispatcherRegisterActions()
@@ -192,25 +186,26 @@ function Bookends:onSetBookends(new_state)
 end
 
 function Bookends:onCycleBookendsPreset()
-    local presets = self.preset_obj.presets
-    local names = {}
-    for name in pairs(presets) do
-        table.insert(names, name)
-    end
-    if #names == 0 then return true end
-    table.sort(names)
+    local presets = self:readPresetFiles()
+    if #presets == 0 then return true end
+
     local idx = 1
     local last = self.settings:readSetting("last_cycled_preset")
     if last then
-        for i, name in ipairs(names) do
-            if name == last then
-                idx = (i % #names) + 1
+        for i, entry in ipairs(presets) do
+            if entry.name == last then
+                idx = (i % #presets) + 1
                 break
             end
         end
     end
-    self.settings:saveSetting("last_cycled_preset", names[idx])
-    self:loadPreset(presets[names[idx]])
+
+    self.settings:saveSetting("last_cycled_preset", presets[idx].name)
+    local ok, err = pcall(self.loadPreset, self, presets[idx].preset)
+    if not ok then
+        local Notification = require("ui/widget/notification")
+        Notification:notify(T(_("Preset error: %1"), tostring(err)))
+    end
     self:markDirty()
     return true
 end
@@ -316,6 +311,8 @@ function Bookends:buildPreset()
         defaults = util.tableDeepCopy(self.defaults),
         positions = {},
     }
+    -- Exclude default font so presets adapt to the user's installed font
+    preset.defaults.font_face = nil
     for _, pos in ipairs(self.POSITIONS) do
         preset.positions[pos.key] = util.tableDeepCopy(self.positions[pos.key])
     end
@@ -337,6 +334,8 @@ function Bookends:loadPreset(preset)
         -- Ignore old v_offset/h_offset keys from pre-v2 presets
         pd.v_offset = nil
         pd.h_offset = nil
+        -- Never override the user's default font from a preset
+        pd.font_face = nil
         -- Reset margins before applying preset values
         self.defaults.margin_top = 10
         self.defaults.margin_bottom = 25
@@ -364,17 +363,19 @@ function Bookends:loadPreset(preset)
             end
         end
     end
+    local bar_defaults = {
+        enabled = false, type = "book", style = "solid", height = 20,
+        v_anchor = "bottom", margin_v = 0, margin_left = 0, margin_right = 0,
+        chapter_ticks = "off",
+    }
     if preset.progress_bars then
         self.progress_bars = util.tableDeepCopy(preset.progress_bars)
     else
-        -- Reset progress bars when loading presets that don't include them
-        local bar_defaults = {
-            enabled = false, type = "book", style = "solid", height = 20,
-            v_anchor = "bottom", margin_v = 0, margin_left = 0, margin_right = 0,
-            chapter_ticks = "off",
-        }
         self.progress_bars = {}
-        for i = 1, 4 do
+    end
+    -- Always ensure exactly 4 bar slots exist
+    for i = 1, 4 do
+        if not self.progress_bars[i] then
             self.progress_bars[i] = util.tableDeepCopy(bar_defaults)
         end
     end
@@ -398,6 +399,255 @@ function Bookends:loadPreset(preset)
     end
     self._tick_cache = nil
     self:markDirty()
+end
+
+function Bookends:presetDir()
+    if not self._preset_dir then
+        local DataStorage = require("datastorage")
+        self._preset_dir = DataStorage:getSettingsDir() .. "/bookends_presets"
+    end
+    return self._preset_dir
+end
+
+function Bookends:sanitizePresetFilename(name)
+    local sanitized = name:lower()
+        :gsub("[^%w_]", "_")
+        :gsub("_+", "_")
+        :gsub("^_", "")
+        :gsub("_$", "")
+    if sanitized == "" then sanitized = "preset" end
+    return sanitized .. ".lua"
+end
+
+function Bookends.serializeTable(tbl, indent)
+    indent = indent or ""
+    local next_indent = indent .. "    "
+    local parts = {}
+    table.insert(parts, "{\n")
+
+    local int_keys = {}
+    local str_keys = {}
+    for k in pairs(tbl) do
+        if type(k) == "number" and k == math.floor(k) and k >= 1 then
+            table.insert(int_keys, k)
+        else
+            table.insert(str_keys, tostring(k))
+        end
+    end
+    table.sort(int_keys)
+    table.sort(str_keys)
+
+    local function serializeValue(v)
+        if type(v) == "table" then
+            return Bookends.serializeTable(v, next_indent)
+        elseif type(v) == "string" then
+            return string.format("%q", v)
+        elseif type(v) == "boolean" then
+            return tostring(v)
+        elseif type(v) == "number" then
+            return tostring(v)
+        else
+            return string.format("%q", tostring(v))
+        end
+    end
+
+    -- Detect sparse integer arrays (gaps in keys) — must use explicit [N] = syntax
+    local is_contiguous = #int_keys > 0 and int_keys[#int_keys] == #int_keys
+    for _, k in ipairs(int_keys) do
+        if is_contiguous then
+            table.insert(parts, next_indent .. serializeValue(tbl[k]) .. ",\n")
+        else
+            table.insert(parts, next_indent .. "[" .. k .. "] = " .. serializeValue(tbl[k]) .. ",\n")
+        end
+    end
+    for _, k in ipairs(str_keys) do
+        local key_str
+        if k:match("^[%a_][%w_]*$") then
+            key_str = k
+        else
+            key_str = string.format("[%q]", k)
+        end
+        table.insert(parts, next_indent .. key_str .. " = " .. serializeValue(tbl[k]) .. ",\n")
+    end
+
+    table.insert(parts, indent .. "}")
+    return table.concat(parts)
+end
+
+function Bookends:ensurePresetDir()
+    local lfs = require("libs/libkoreader-lfs")
+    local dir = self:presetDir()
+    if lfs.attributes(dir, "mode") ~= "directory" then
+        lfs.mkdir(dir)
+    end
+    return dir
+end
+
+--- Load a preset .lua file in a sandboxed environment.
+--- The file can only return a plain data table — no access to os, io, require, etc.
+function Bookends.loadPresetFile(path)
+    local fn, err = loadfile(path)
+    if not fn then return nil, "parse error: " .. tostring(err) end
+
+    -- Sandbox: empty environment — only basic value types and table constructors work
+    setfenv(fn, {})
+
+    local ok, result = pcall(fn)
+    if not ok then return nil, "runtime error: " .. tostring(result) end
+    if type(result) ~= "table" then return nil, "expected table, got " .. type(result) end
+    return result
+end
+
+--- Validate that a preset table has the expected structure.
+--- Returns the (possibly cleaned) table, or nil + error string.
+function Bookends.validatePreset(data)
+    -- Allow only known top-level keys (ignore unknown ones silently for forward compat)
+    local EXPECTED_TYPES = {
+        name = "string",
+        enabled = "boolean",
+        defaults = "table",
+        positions = "table",
+        progress_bars = "table",
+        bar_colors = "table",
+        tick_width_multiplier = "number",
+        tick_height_pct = "number",
+    }
+
+    for key, val in pairs(data) do
+        local expected = EXPECTED_TYPES[key]
+        if expected and type(val) ~= expected then
+            return nil, "field '" .. key .. "' should be " .. expected .. ", got " .. type(val)
+        end
+    end
+
+    -- Validate positions keys if present
+    if data.positions then
+        local VALID_POS = { tl=true, tc=true, tr=true, bl=true, bc=true, br=true }
+        for key, val in pairs(data.positions) do
+            if not VALID_POS[key] then
+                return nil, "unknown position key: " .. tostring(key)
+            end
+            if type(val) ~= "table" then
+                return nil, "position '" .. key .. "' should be table, got " .. type(val)
+            end
+            -- Each position must have a lines array
+            if val.lines and type(val.lines) ~= "table" then
+                return nil, "position '" .. key .. "'.lines should be table"
+            end
+        end
+    end
+
+    return data
+end
+
+function Bookends:readPresetFiles()
+    local lfs = require("libs/libkoreader-lfs")
+    local logger = require("logger")
+    local dir = self:presetDir()
+    local presets = {}
+
+    if lfs.attributes(dir, "mode") ~= "directory" then
+        return presets
+    end
+
+    for f in lfs.dir(dir) do
+        if f:match("%.lua$") then
+            local path = dir .. "/" .. f
+            local data, err = Bookends.loadPresetFile(path)
+            if not data then
+                logger.warn("bookends: skipping preset", f, "—", err)
+            else
+                data, err = Bookends.validatePreset(data)
+                if not data then
+                    logger.warn("bookends: invalid preset", f, "—", err)
+                else
+                    local name = data.name or f:gsub("%.lua$", ""):gsub("_", " ")
+                    table.insert(presets, {
+                        name = name,
+                        filename = f,
+                        preset = data,
+                    })
+                end
+            end
+        end
+    end
+
+    table.sort(presets, function(a, b) return a.name < b.name end)
+    return presets
+end
+
+function Bookends:writePresetFile(name, preset_data)
+    local dir = self:ensurePresetDir()
+    local lfs = require("libs/libkoreader-lfs")
+
+    preset_data.name = name
+
+    local base = self:sanitizePresetFilename(name)
+    local filename = base
+    local counter = 2
+    while lfs.attributes(dir .. "/" .. filename, "mode") == "file" do
+        filename = base:gsub("%.lua$", "_" .. counter .. ".lua")
+        counter = counter + 1
+    end
+
+    local path = dir .. "/" .. filename
+    local fout = io.open(path, "w")
+    if fout then
+        fout:write("-- Bookends preset: " .. name .. "\n")
+        fout:write("return " .. Bookends.serializeTable(preset_data) .. "\n")
+        fout:close()
+    end
+    return filename
+end
+
+function Bookends:deletePresetFile(filename)
+    local path = self:presetDir() .. "/" .. filename
+    os.remove(path)
+end
+
+function Bookends:renamePresetFile(old_filename, new_name)
+    local dir = self:presetDir()
+    local old_path = dir .. "/" .. old_filename
+
+    local data = Bookends.loadPresetFile(old_path)
+    if not data then return nil end
+
+    local new_filename = self:writePresetFile(new_name, data)
+
+    if new_filename ~= old_filename then
+        os.remove(old_path)
+    end
+
+    return new_filename
+end
+
+function Bookends:updatePresetFile(filename, name)
+    local dir = self:presetDir()
+    local path = dir .. "/" .. filename
+    local preset_data = self:buildPreset()
+    preset_data.name = name
+
+    local fout = io.open(path, "w")
+    if fout then
+        fout:write("-- Bookends preset: " .. name .. "\n")
+        fout:write("return " .. Bookends.serializeTable(preset_data) .. "\n")
+        fout:close()
+    end
+end
+
+function Bookends:migratePresetsToFiles()
+    local embedded = self.settings:readSetting("presets")
+    if not embedded or not next(embedded) then return end
+
+    self:ensurePresetDir()
+
+    for name, preset_data in pairs(embedded) do
+        self:writePresetFile(name, preset_data)
+    end
+
+    self.settings:delSetting("presets")
+    self.settings:delSetting("last_cycled_preset")
+    self.settings:flush()
 end
 
 function Bookends:savePositionSetting(key)
@@ -1472,7 +1722,9 @@ function Bookends:buildSingleBarMenu(bar_idx, bar_cfg)
                     ttb = _("Fill: Top to bottom"),
                     btt = _("Fill: Bottom to top"),
                 }
-                return labels[bar_cfg.direction or "ltr"]
+                local is_side = bar_cfg.v_anchor == "left" or bar_cfg.v_anchor == "right"
+                local default_dir = is_side and "ttb" or "ltr"
+                return labels[bar_cfg.direction or default_dir]
             end,
             enabled_func = isEnabled,
             keep_menu_open = true,
@@ -2222,21 +2474,196 @@ function Bookends:buildPresetsMenu()
     end
     items[#items].separator = true
 
-    -- Custom presets submenu (fully managed by Presets module)
+    -- Custom presets (file-based)
     table.insert(items, {
         text = _("Custom presets"),
         sub_item_table_func = function()
-            local Presets = require("ui/presets")
-            local user_items = Presets.genPresetMenuItemTable(self.preset_obj)
-            table.insert(user_items, {
-                text = _("Long press presets to edit"),
-                enabled_func = function() return false end,
-            })
-            return user_items
+            return self:buildCustomPresetsMenu()
         end,
     })
 
     return items
+end
+
+function Bookends:buildCustomPresetsMenu()
+    local items = {
+        {
+            text = _("Save current as preset…"),
+            keep_menu_open = true,
+            callback = function(touchmenu_instance)
+                local restoreMenu = self:hideMenu(touchmenu_instance)
+                local input_dialog
+                input_dialog = InputDialog:new{
+                    title = _("Enter preset name"),
+                    buttons = {
+                        {
+                            {
+                                text = _("Cancel"),
+                                id = "close",
+                                callback = function()
+                                    UIManager:close(input_dialog)
+                                    restoreMenu()
+                                end,
+                            },
+                            {
+                                text = _("Save"),
+                                is_enter_default = true,
+                                callback = function()
+                                    local name = input_dialog:getInputText()
+                                    if name == "" or name:match("^%s*$") then
+                                        UIManager:show(InfoMessage:new{
+                                            text = _("Please enter a name for the preset."),
+                                            timeout = 2,
+                                        })
+                                        return
+                                    end
+                                    local preset_data = self:buildPreset()
+                                    self:writePresetFile(name, preset_data)
+                                    UIManager:close(input_dialog)
+                                    restoreMenu()
+                                    UIManager:show(InfoMessage:new{
+                                        text = T(_("Preset '%1' saved."), name),
+                                        timeout = 2,
+                                    })
+                                end,
+                            },
+                        },
+                    },
+                }
+                UIManager:show(input_dialog)
+                input_dialog:onShowKeyboard()
+            end,
+            separator = true,
+        },
+    }
+
+    -- Load preset files from directory
+    local presets = self:readPresetFiles()
+    for _i, entry in ipairs(presets) do
+        table.insert(items, {
+            text = entry.name,
+            keep_menu_open = true,
+            callback = function()
+                local load_ok, load_err = pcall(self.loadPreset, self, entry.preset)
+                if not load_ok then
+                    UIManager:show(InfoMessage:new{
+                        text = T(_("Failed to load preset '%1':\n%2"), entry.name, tostring(load_err)),
+                    })
+                    return
+                end
+                UIManager:show(InfoMessage:new{
+                    text = T(_("Preset '%1' loaded."), entry.name),
+                    timeout = 2,
+                })
+            end,
+            hold_callback = function(touchmenu_instance)
+                self:showPresetEditDialog(entry, touchmenu_instance)
+            end,
+        })
+    end
+
+    if #presets > 0 then
+        table.insert(items, {
+            text = _("Long press presets to edit"),
+            enabled_func = function() return false end,
+        })
+    end
+
+    -- Show presets folder path
+    table.insert(items, {
+        text = _("Open presets folder"),
+        keep_menu_open = true,
+        callback = function()
+            self:ensurePresetDir()
+            UIManager:show(InfoMessage:new{
+                text = T(_("Preset files are stored in:\n%1\n\nCopy .lua files here to import presets from other users."), self:presetDir()),
+            })
+        end,
+        separator = true,
+    })
+
+    return items
+end
+
+function Bookends:showPresetEditDialog(entry, touchmenu_instance)
+    UIManager:show(ConfirmBox:new{
+        text = T(_("What would you like to do with preset '%1'?"), entry.name),
+        icon = "notice-question",
+        ok_text = _("Update"),
+        ok_callback = function()
+            UIManager:show(ConfirmBox:new{
+                text = T(_("Overwrite preset '%1' with current settings?"), entry.name),
+                ok_callback = function()
+                    self:updatePresetFile(entry.filename, entry.name)
+                    UIManager:show(InfoMessage:new{
+                        text = T(_("Preset '%1' updated."), entry.name),
+                        timeout = 2,
+                    })
+                end,
+            })
+        end,
+        other_buttons_first = true,
+        other_buttons = {
+            {
+                {
+                    text = _("Delete"),
+                    callback = function()
+                        UIManager:show(ConfirmBox:new{
+                            text = T(_("Delete preset '%1'? This cannot be undone."), entry.name),
+                            ok_text = _("Delete"),
+                            ok_callback = function()
+                                self:deletePresetFile(entry.filename)
+                                UIManager:show(InfoMessage:new{
+                                    text = T(_("Preset '%1' deleted."), entry.name),
+                                    timeout = 2,
+                                })
+                            end,
+                        })
+                    end,
+                },
+                {
+                    text = _("Rename"),
+                    callback = function()
+                        local input_dialog
+                        input_dialog = InputDialog:new{
+                            title = _("Enter new preset name"),
+                            input = entry.name,
+                            buttons = {
+                                {
+                                    {
+                                        text = _("Cancel"),
+                                        id = "close",
+                                        callback = function()
+                                            UIManager:close(input_dialog)
+                                        end,
+                                    },
+                                    {
+                                        text = _("Rename"),
+                                        is_enter_default = true,
+                                        callback = function()
+                                            local new_name = input_dialog:getInputText()
+                                            if new_name == "" or new_name:match("^%s*$") or new_name == entry.name then
+                                                UIManager:close(input_dialog)
+                                                return
+                                            end
+                                            self:renamePresetFile(entry.filename, new_name)
+                                            UIManager:close(input_dialog)
+                                            UIManager:show(InfoMessage:new{
+                                                text = T(_("Preset renamed to '%1'."), new_name),
+                                                timeout = 2,
+                                            })
+                                        end,
+                                    },
+                                },
+                            },
+                        }
+                        UIManager:show(input_dialog)
+                        input_dialog:onShowKeyboard()
+                    end,
+                },
+            },
+        },
+    })
 end
 
 -- ─── Line editing ────────────────────────────────────────
@@ -2550,6 +2977,9 @@ function Bookends:editLineString(pos, line_idx, touchmenu_instance)
                     self:savePositionSetting(pos.key)
                     UIManager:close(format_dialog)
                     self:markDirty()
+                    if touchmenu_instance then
+                        touchmenu_instance.item_table = self:buildPositionMenu(pos)
+                    end
                     restoreMenu()
                 end,
             },
@@ -2595,6 +3025,9 @@ function Bookends:editLineString(pos, line_idx, touchmenu_instance)
                     self:savePositionSetting(pos.key)
                     UIManager:close(format_dialog)
                     self:markDirty()
+                    if touchmenu_instance then
+                        touchmenu_instance.item_table = self:buildPositionMenu(pos)
+                    end
                     restoreMenu()
                 end,
             },

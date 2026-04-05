@@ -825,6 +825,7 @@ function OverlayWidget.paintProgressBar(bb, x, y, w, h, fraction, ticks, style, 
         pr(line_ox, line_y, line_len, line_thick, metro_track)
 
         -- Chapter ticks: depth 1 above line (connected to trunk), depth 2 below
+        -- When reversed, flip tick sides so the visual hierarchy mirrors the direction
         for _, tick in ipairs(ticks or {}) do
             local tick_frac = type(tick) == "table" and tick[1] or tick
             local tick_w = type(tick) == "table" and tick[2] or 1
@@ -832,7 +833,15 @@ function OverlayWidget.paintProgressBar(bb, x, y, w, h, fraction, ticks, style, 
             if reverse then tick_frac = 1 - tick_frac end
             local tick_pos = math.floor(line_len * tick_frac)
             if tick_pos > 0 and tick_pos < line_len then
-                if tick_depth <= 1 then
+                local tick_above
+                if reverse then
+                    tick_above = tick_depth > 1
+                else
+                    tick_above = tick_depth <= 1
+                end
+                -- Vertical (side-anchored) bars: flip tick sides
+                if vertical then tick_above = not tick_above end
+                if tick_above then
                     -- From top of bar down through trunk
                     local full_h = line_y + line_thick - oy
                     local th = math.max(1, math.floor(full_h * tick_height_pct / 100))
