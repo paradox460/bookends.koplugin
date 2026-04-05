@@ -1,7 +1,8 @@
-local Font = require("ui/font")
-local TextWidget = require("ui/widget/textwidget")
 local Blitbuffer = require("ffi/blitbuffer")
 local Device = require("device")
+local Font = require("ui/font")
+local TextWidget = require("ui/widget/textwidget")
+local Utf8Proc = require("ffi/utf8proc")
 local Screen = Device.screen
 
 local OverlayWidget = {}
@@ -202,7 +203,7 @@ local function buildBarLine(text, cfg, available_w, max_width)
 
     local function addTextSegment(t)
         if t == "" then return end
-        local display = cfg.uppercase and t:upper() or t
+        local display = cfg.uppercase and Utf8Proc.uppercase_dumb(t) or t
         local tw = TextWidget:new(textWidgetOpts{
             text = display,
             face = cfg.face,
@@ -313,7 +314,7 @@ function OverlayWidget.buildTextWidget(text, line_configs, h_anchor, max_width, 
             return buildBarLine(lines[1], cfg, available_w or Screen:getWidth(), max_width)
         end
         -- Plain text — fast path
-        local display_text = cfg.uppercase and lines[1]:upper() or lines[1]
+        local display_text = cfg.uppercase and Utf8Proc.uppercase_dumb(lines[1]) or lines[1]
         local tw = TextWidget:new(textWidgetOpts{
             text = display_text,
             face = cfg.face,
@@ -346,7 +347,7 @@ function OverlayWidget.buildTextWidget(text, line_configs, h_anchor, max_width, 
         elseif cfg.bar then
             widget, w, h = buildBarLine(line, cfg, available_w or Screen:getWidth(), max_width)
         else
-            local display_text = cfg.uppercase and line:upper() or line
+            local display_text = cfg.uppercase and Utf8Proc.uppercase_dumb(line) or line
             widget = TextWidget:new(textWidgetOpts{
                 text = display_text,
                 face = cfg.face,
@@ -396,7 +397,7 @@ function OverlayWidget.measureTextWidth(text, line_configs)
             measure_text = line:gsub(BAR_PLACEHOLDER, "")
         end
         if measure_text ~= "" then
-            local display_text = cfg.uppercase and measure_text:upper() or measure_text
+            local display_text = cfg.uppercase and Utf8Proc.uppercase_dumb(measure_text) or measure_text
             local tw = TextWidget:new(textWidgetOpts{
                 text = display_text, face = cfg.face, bold = cfg.bold,
             })
@@ -422,7 +423,7 @@ function OverlayWidget.applyTokenLimits(text, face, bold, uppercase)
     return text:gsub("\x01(%d+)\x02(.-)\x03", function(limit_str, value)
         local max_px = tonumber(limit_str)
         if not max_px or max_px <= 0 or value == "" then return value end
-        local display = uppercase and value:upper() or value
+        local display = uppercase and Utf8Proc.uppercase_dumb(value) or value
         -- Measure full value
         local tw = TextWidget:new(textWidgetOpts{
             text = display, face = face, bold = bold,
@@ -576,7 +577,7 @@ function OverlayWidget.buildStyledLine(segments, cfg, available_w, max_width)
             -- Remember bar position, insert later after measuring text
             bar_slot = #widgets + 1
         else
-            local display = seg.uppercase and seg.text:upper() or seg.text
+            local display = seg.uppercase and Utf8Proc.uppercase_dumb(seg.text) or seg.text
             if display ~= "" then
                 -- Resolve font face for this segment
                 local seg_face = cfg.face
