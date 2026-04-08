@@ -799,7 +799,9 @@ Bookends.onCharging               = Bookends.delayedRepaint
 Bookends.onNotCharging            = Bookends.delayedRepaint
 Bookends.onNetworkConnected       = Bookends.delayedRepaint
 Bookends.onNetworkDisconnected    = Bookends.delayedRepaint
-Bookends.onAnnotationsModified = Bookends.delayedRepaint
+function Bookends:onAnnotationsModified()
+    self:markDirty()
+end
 function Bookends:getSessionPageNumber()
     local pageno = self.ui.view.state.page
     if not pageno then return nil end
