@@ -155,10 +155,19 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
             page_count = tonumber(totalpages)
         end
 
-        -- Book percent: raw pages for per-flip accuracy
-        local raw_total = doc:getPageCount()
-        if pageno and raw_total and raw_total > 0 then
-            percent = math.floor(pageno / raw_total * 100) .. "%"
+        -- Book percent: flow-aware when hidden flows active, raw pages otherwise
+        if pageno and doc:hasHiddenFlows() then
+            local flow = doc:getPageFlow(pageno)
+            local flow_page = doc:getPageNumberInFlow(pageno)
+            local flow_total = doc:getTotalPagesInFlow(flow)
+            if flow_total and flow_total > 0 then
+                percent = math.floor(flow_page / flow_total * 100 + 0.5) .. "%"
+            end
+        else
+            local raw_total = doc:getPageCount()
+            if pageno and raw_total and raw_total > 0 then
+                percent = math.floor(pageno / raw_total * 100 + 0.5) .. "%"
+            end
         end
         -- Pages left in book: stable page count
         if page_idx and page_count and page_count > 0 then
