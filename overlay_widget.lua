@@ -173,6 +173,7 @@ end
 
 -- U+FFFC OBJECT REPLACEMENT CHARACTER — placeholder for bar position in text
 local BAR_PLACEHOLDER = "\xEF\xBF\xBC"
+OverlayWidget.BAR_PLACEHOLDER = BAR_PLACEHOLDER
 
 --- Build a HorizontalRowWidget for a line that contains a bar token.
 -- Text is split on the BAR_PLACEHOLDER to preserve before/after segments.

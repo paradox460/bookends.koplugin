@@ -1,5 +1,6 @@
 local Device = require("device")
 local datetime = require("datetime")
+local BAR_PLACEHOLDER = require("overlay_widget").BAR_PLACEHOLDER
 
 local Tokens = {}
 
@@ -32,6 +33,29 @@ local function getDateLocale()
     if saved then os.setlocale(saved, "time") end -- restore after failed probes
     _date_locale_cache[lang] = false
     return false
+end
+
+--- Compute chapter tick fractions as {fraction, width, depth} triples.
+function Tokens.computeTickFractions(doc, toc, tick_width_multiplier)
+    if not doc or not toc then return {} end
+    local raw_total = doc:getPageCount()
+    if not raw_total or raw_total <= 0 then return {} end
+    local toc_ticks = toc:getTocTicks() or {}
+    local max_depth = toc:getMaxDepth() or 1
+    local tick_m = tick_width_multiplier or 2
+    local ticks = {}
+    for depth, pages in ipairs(toc_ticks) do
+        local tick_w = math.max(1, (max_depth - depth + 1) * tick_m - 1)
+        for _, page in ipairs(pages) do
+            if page > 1 then
+                local tick_frac = page / raw_total
+                if tick_frac > 0 and tick_frac < 1 then
+                    table.insert(ticks, { tick_frac, tick_w, depth })
+                end
+            end
+        end
+    end
+    return ticks
 end
 
 function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, preview_mode, tick_width_multiplier)
@@ -237,24 +261,7 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
         end
 
         -- Chapter tick positions as {fraction, width, depth} — page-based to match KOReader footer
-        local ticks = {}
-        local raw_total = bar_doc:getPageCount()
-        if raw_total and raw_total > 0 and ui.toc then
-            local toc_ticks = ui.toc:getTocTicks() or {}
-            local max_depth = ui.toc:getMaxDepth() or 1
-            for depth, pages in ipairs(toc_ticks) do
-                local tick_m = tick_width_multiplier or 2
-                local tick_w = math.max(1, (max_depth - depth + 1) * tick_m - 1)
-                for _, page in ipairs(pages) do
-                    if page > 1 then
-                        local tick_frac = page / raw_total
-                        if tick_frac > 0 and tick_frac < 1 then
-                            table.insert(ticks, { tick_frac, tick_w, depth })
-                        end
-                    end
-                end
-            end
-        end
+        local ticks = Tokens.computeTickFractions(bar_doc, ui.toc, tick_width_multiplier)
 
         bar_info.book = { kind = "book", pct = book_pct or 0, ticks = ticks }
 
@@ -522,8 +529,6 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     end
 
     -- Replace bar tokens with a placeholder so buildBarLine knows where to insert the bar.
-    -- Uses U+FFFC OBJECT REPLACEMENT CHARACTER (UTF-8: \xEF\xBF\xBC).
-    local BAR_PLACEHOLDER = "\xEF\xBF\xBC"
     local result_str = format_str
     if has_bar then
         result_str = result_str:gsub("%%bar", BAR_PLACEHOLDER)

@@ -162,33 +162,37 @@ function IconPicker:buildItemTable()
     return items
 end
 
---- Show the icon picker. When user selects an icon, on_select(value) is called.
-function IconPicker:show(on_select)
-    local item_table = self:buildItemTable()
+--- Show a centered Menu popup for picker UIs (tokens, icons, etc.)
+function IconPicker.showPickerMenu(title, items, on_choice)
     local Device = require("device")
     local Screen = Device.screen
-
     local Size = require("ui/size")
 
     local menu
     menu = Menu:new{
-        title = _("Insert symbol"),
-        item_table = item_table,
+        title = title,
+        item_table = items,
         width = math.floor(Screen:getWidth() * 0.8),
         height = math.floor(Screen:getHeight() * 0.8),
         items_per_page = 14,
         onMenuChoice = function(_, item)
             if item.insert_value then
                 UIManager:close(menu)
-                on_select(item.insert_value)
+                on_choice(item)
             end
         end,
     }
-    -- Override popout corner radius and page text size to match font picker
     if menu[1] then menu[1].radius = Size.radius.window end
     local x = math.floor((Screen:getWidth() - menu.dimen.w) / 2)
     local y = math.floor((Screen:getHeight() - menu.dimen.h) / 2)
     UIManager:show(menu, nil, nil, x, y)
+end
+
+--- Show the icon picker. When user selects an icon, on_select(value) is called.
+function IconPicker:show(on_select)
+    IconPicker.showPickerMenu(_("Insert symbol"), self:buildItemTable(), function(item)
+        on_select(item.insert_value)
+    end)
 end
 
 return IconPicker
