@@ -1,6 +1,80 @@
 # Bookends
 
-A KOReader plugin for placing configurable text overlays at the corners and edges of the reading screen. Each position supports multiple lines with independent font, size, and style settings. Format strings use tokens that expand to live book metadata, reading progress, time, and device status.
+Customisable text overlays for KOReader — page numbers, reading stats, progress bars, clocks, and more, placed anywhere on the reading screen.
+
+### Screenshots
+
+| Title page | Speed Reader | Classic Alternating |
+|:---:|:---:|:---:|
+| ![Title page](screenshots/title-page.png) | ![Speed Reader](screenshots/speed-reader.png) | ![Classic Alternating](screenshots/classic-alternating.png) |
+
+| Rich Detail | Progress bar styles | Main menu |
+|:---:|:---:|:---:|
+| ![Rich Detail](screenshots/rich-detail.png) | ![Progress bar styles](screenshots/progress-bars-styles.png) | ![Main menu](screenshots/main-menu.png) |
+
+### Quick start
+
+1. Copy `bookends.koplugin/` to your KOReader plugins directory ([paths](#installation))
+2. Open a book → **typeset/document menu** (style icon) → **Bookends** → Enable
+3. Tap a position (e.g., Bottom-center) → **Add line**
+4. Type a format string or use the **Tokens** and **Icons** buttons to insert placeholders
+5. Tap **Save** — your overlay appears immediately
+
+### Recipes
+
+Copy-paste these format strings to get started quickly. Each one goes in a single line — just pick a position and paste.
+
+**Page numbers** — the basics
+```
+Page %c of %t
+```
+
+**Chapter progress** — pages read and remaining
+```
+%g/%G  (%l left)
+```
+
+**Clock and battery in a corner**
+```
+%k  %B
+```
+
+**Book title on even pages, chapter title on odd**
+```
+[if:page=even]%T[else]%C[/if]
+```
+
+**Reading speed, only shown when actively reading**
+```
+[if:speed>0]%r pages/hr[/if]
+```
+
+**Speed in italics when you're reading fast**
+```
+[if:speed>50][i]%r pg/hr[/i][else]%r pg/hr[/if]
+```
+
+**Time left in book with a progress bar**
+```
+%H remaining  %bar
+```
+
+**Low battery warning**
+```
+[if:batt<20]Low battery %b[/if]
+```
+
+Each line has its own font, size, and style controls in the editor — so you can set page numbers in one font and chapter titles in another.
+
+### Built-in presets
+
+Three presets are included to get you started — load one and customise from there:
+
+- **Speed Reader** — Session timer, reading speed, time remaining, progress percentages
+- **Classic Alternating** — Book title on even pages, chapter on odd, page number at bottom
+- **Rich Detail** — All six positions with clock, battery, Wi-Fi, brightness, highlights, and more
+
+Save your own presets via **Presets > Custom presets > Create new preset from current settings**.
 
 ### Screen positions
 
@@ -16,48 +90,16 @@ A KOReader plugin for placing configurable text overlays at the corners and edge
 
 Six positions: **Top-left**, **Top-center**, **Top-right**, **Bottom-left**, **Bottom-center**, **Bottom-right**. Each position can have multiple lines of text.
 
-### Screenshots
+---
 
-| Title page | Speed Reader | Classic Alternating |
-|:---:|:---:|:---:|
-| ![Title page](screenshots/title-page.png) | ![Speed Reader](screenshots/speed-reader.png) | ![Classic Alternating](screenshots/classic-alternating.png) |
+## Reference
 
-| Rich Detail | Main menu | Adjust margins |
-|:---:|:---:|:---:|
-| ![Rich Detail](screenshots/rich-detail.png) | ![Main menu](screenshots/main-menu.png) | ![Adjust margins](screenshots/adjust-margins.png) |
+Everything below is the full feature reference. Expand any section you need.
 
-| Line editor | Symbol picker | Token picker |
-|:---:|:---:|:---:|
-| ![Line editor](screenshots/line-editor.png) | ![Symbol picker](screenshots/icon-picker.png) | ![Token picker](screenshots/token-picker.png) |
+<details>
+<summary><strong>Tokens</strong> — all available placeholders</summary>
 
-| Progress bar styles | Progress bar line editor |
-|:---:|:---:|
-| ![Progress bar styles](screenshots/progress-bars-styles.png) | ![Progress bar line editor](screenshots/progress-bars-line-editor.png) |
-
-### Quick start
-
-1. Copy `bookends.koplugin/` to your KOReader plugins directory
-2. Open a book
-3. Go to the **typeset/document menu** (style icon) and find **Bookends**
-4. Enable bookends
-5. Tap a position (e.g., Bottom-center)
-6. Tap **Add line**
-7. Type a format string like `Page %c of %t` or use the **Tokens** and **Icons** buttons to insert
-8. Tap **Save**
-
-### Built-in presets
-
-Three presets are included to get you started:
-
-- **Speed Reader** — Session timer, reading speed, time remaining, progress percentages
-- **Classic Alternating** — Book title on even pages, chapter on odd, page number at bottom
-- **Rich Detail** — All six positions with clock, battery, Wi-Fi, brightness, highlights, and more
-
-Save your own presets via **Presets > Custom presets > Create new preset from current settings**.
-
-### Tokens
-
-Tokens are placeholders that expand to live values. Insert them by typing `%` followed by a letter, or use the **Tokens** button in the line editor.
+Tokens are placeholders that expand to live values. Type `%` followed by a letter, or use the **Tokens** button in the line editor.
 
 #### Metadata
 
@@ -123,7 +165,7 @@ Tokens are placeholders that expand to live values. Insert them by typing `%` fo
 
 Page tokens respect **stable page numbers** and **hidden flows** (non-linear EPUB content). Time-left and reading speed tokens use the **statistics plugin**. Session timer and pages reset each time you wake the device.
 
-#### Progress bars
+#### Inline progress bar
 
 | Token | Description |
 |-------|-------------|
@@ -134,27 +176,10 @@ Add a `%bar` token to any line to render an inline progress bar. The bar auto-fi
 - **Type** — Chapter, Book, Book+ (top-level ticks), Book++ (top 2 level ticks)
 - **Style** — Border, Solid, Rounded, Metro
 
-### Full-width progress bars
+</details>
 
-Up to 8 independent progress bars rendered as dedicated layers behind text. Configure via **Full width progress bars** in the Bookends menu.
-
-- **Anchor** — Top, Bottom, Left (vertical), Right (vertical)
-- **Fill direction** — Left to right, Right to left, Top to bottom, Bottom to top
-- **Style** — Solid, Bordered, Rounded, Metro
-- **Chapter ticks** — Off, Top level, Top 2 levels (book type only)
-- **Thickness** and **margins** with real-time nudge adjustment
-
-Progress on EPUB documents updates smoothly per screen turn using pixel-level position tracking. Chapter tick marks vary in thickness by TOC depth.
-
-### Smart features
-
-- **Auto-hide** — Lines where all tokens resolve to empty or zero are automatically hidden
-- **Token width limits** — Append `{N}` to any token to cap its width at N pixels: `%C{200} - %g/%G` truncates the chapter title with ellipsis if it exceeds 200 pixels. Works with `%bar{400}` to set a fixed bar width instead of auto-fill.
-- **Pluralisation** — Write `%q highlight(s)` and it becomes `1 highlight` or `3 highlights`
-- **Odd/even pages** — Set any line to appear on all pages, odd pages only, or even pages only
-- **Auto-refresh** — Clock and other dynamic tokens update every 60 seconds
-
-### Conditional tokens
+<details>
+<summary><strong>Conditional tokens</strong> — show/hide content based on state</summary>
 
 Show or hide content based on device state, reading progress, time, and more using `[if:condition]...[/if]` blocks with optional `[else]`:
 
@@ -191,7 +216,29 @@ Operators: `=` (equals), `<` (less than), `>` (greater than).
 
 Conditions evaluate live — the charging icon appears the moment you plug in, the wifi icon vanishes when you disconnect. The token picker has a dedicated **If/Else conditional tokens** submenu with syntax help, examples, and a complete reference.
 
-### Icons
+</details>
+
+<details>
+<summary><strong>Full-width progress bars</strong> — dedicated bar layers behind text</summary>
+
+Up to 8 independent progress bars rendered as dedicated layers behind text. Configure via **Full width progress bars** in the Bookends menu.
+
+- **Anchor** — Top, Bottom, Left (vertical), Right (vertical)
+- **Fill direction** — Left to right, Right to left, Top to bottom, Bottom to top
+- **Style** — Solid, Bordered, Rounded, Metro
+- **Chapter ticks** — Off, Top level, Top 2 levels (book type only)
+- **Thickness** and **margins** with real-time nudge adjustment
+
+Progress on EPUB documents updates smoothly per screen turn using pixel-level position tracking. Chapter tick marks vary in thickness by TOC depth.
+
+| Progress bar styles | Progress bar line editor |
+|:---:|:---:|
+| ![Progress bar styles](screenshots/progress-bars-styles.png) | ![Progress bar line editor](screenshots/progress-bars-line-editor.png) |
+
+</details>
+
+<details>
+<summary><strong>Icons</strong> — Nerd Fonts glyph picker</summary>
 
 The **Icons** button in the line editor opens a picker with categorised glyphs from the Nerd Fonts set (bundled with KOReader). Categories include:
 
@@ -204,7 +251,12 @@ The **Icons** button in the line editor opens a picker with categorised glyphs f
 - **Arrows** — Directional arrows, triangles, angle brackets
 - **Separators** — Vertical bar, bullets, dots, dashes, slashes
 
-### Per-line styling
+</details>
+
+<details>
+<summary><strong>Styling</strong> — per-line fonts, inline bold/italic/uppercase</summary>
+
+#### Per-line styling
 
 Each line has its own style controls in the editor dialog:
 
@@ -217,7 +269,11 @@ Each line has its own style controls in the editor dialog:
 
 Italic uses automatic font variant detection — searches installed fonts for matching italic variants.
 
-### Inline formatting
+| Line editor | Symbol picker | Token picker |
+|:---:|:---:|:---:|
+| ![Line editor](screenshots/line-editor.png) | ![Symbol picker](screenshots/icon-picker.png) | ![Token picker](screenshots/token-picker.png) |
+
+#### Inline formatting
 
 Use BBCode-style tags to format parts of a line independently:
 
@@ -231,7 +287,27 @@ Tags can be nested: `[b][i]bold italic[/i][/b]`. Tags must be properly nested �
 
 Tags override the line's per-line style. If a line is set to Bold, `[i]text[/i]` renders that segment as italic (not bold italic). Use `[b][i]...[/i][/b]` for explicit bold italic.
 
-### Margins
+</details>
+
+<details>
+<summary><strong>Smart features</strong> — auto-hide, token width limits, pluralisation</summary>
+
+- **Auto-hide** — Lines where all tokens resolve to empty or zero are automatically hidden
+- **Token width limits** — Append `{N}` to any token to cap its width at N pixels: `%C{200} - %g/%G` truncates the chapter title with ellipsis if it exceeds 200 pixels. Works with `%bar{400}` to set a fixed bar width instead of auto-fill.
+- **Pluralisation** — Write `%q highlight(s)` and it becomes `1 highlight` or `3 highlights`
+- **Odd/even pages** — Set any line to appear on all pages, odd pages only, or even pages only
+- **Auto-refresh** — Clock and other dynamic tokens update every 60 seconds
+
+#### Smart ellipsis
+
+When text would overlap between positions on the same row, Bookends automatically truncates with ellipsis. Center positions get priority by default — left and right text is truncated first. Enable **Prioritise left/right and truncate long center text** to reverse this.
+
+</details>
+
+<details>
+<summary><strong>Layout & margins</strong> — positioning, managing lines</summary>
+
+#### Margins
 
 Bookends uses a three-layer positioning system:
 
@@ -239,7 +315,11 @@ Bookends uses a three-layer positioning system:
 2. **Per-position extra margins** — Additional offset for individual regions
 3. **Per-line nudges** — Pixel-level fine-tuning in the line editor
 
-### Managing lines
+| Adjust margins |
+|:---:|
+| ![Adjust margins](screenshots/adjust-margins.png) |
+
+#### Managing lines
 
 - Tap a **line entry** in a position's submenu to edit it
 - Tap **Add line** to add a new line to the position
@@ -247,11 +327,10 @@ Bookends uses a three-layer positioning system:
 - Saving an empty line automatically removes it
 - The editor shows a **live preview** of your format string as you type
 
-### Smart ellipsis
+</details>
 
-When text would overlap between positions on the same row, Bookends automatically truncates with ellipsis. Center positions get priority by default — left and right text is truncated first. Enable **Prioritise left/right and truncate long center text** to reverse this.
-
-### Settings
+<details>
+<summary><strong>Settings</strong> — fonts, stock status bar, gestures, updates</summary>
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -263,7 +342,7 @@ When text would overlap between positions on the same row, Bookends automaticall
 | Disable stock status bar | Off | Hides KOReader's built-in status bar (see below) |
 | Check for updates | — | Check GitHub for new versions with one-tap install |
 
-### Disabling the stock status bar
+#### Disabling the stock status bar
 
 For the best experience, disable KOReader's built-in status bar via **Settings > Disable stock status bar**. This:
 
@@ -271,9 +350,11 @@ For the best experience, disable KOReader's built-in status bar via **Settings >
 - **Frees screen space** — The stock footer's reserved area is returned to the reading area
 - **Avoids duplication** — All stock status bar features (time, battery, progress, pages, etc.) are available as Bookends tokens
 
-### Gesture support
+#### Gesture support
 
 Assign **Toggle bookends** to any gesture via **Settings > Gesture manager > Reader**. Quickly show/hide all overlays with a tap, swipe, or multi-finger gesture.
+
+</details>
 
 ---
 
