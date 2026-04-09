@@ -793,14 +793,27 @@ Bookends.STYLE_LABELS = {
 
 function Bookends:resolveLineConfig(face_name, font_size, style)
     style = style or "regular"
-    local bold = (style == "bold" or style == "bolditalic")
     local resolved_face = face_name
+    local synthetic_bold = false
 
-    if style == "italic" or style == "bolditalic" then
-        local italic = OverlayWidget.findItalicVariant(face_name)
-        if italic then
-            resolved_face = italic
+    if style ~= "regular" then
+        -- Try to find the exact real font file for this style
+        local variant = OverlayWidget.findFontVariant(face_name, style)
+        if variant then
+            resolved_face = variant
+        elseif style == "bold" then
+            synthetic_bold = true
+        elseif style == "bolditalic" then
+            -- Fallback: italic file + synthetic bold
+            local italic = OverlayWidget.findFontVariant(face_name, "italic")
+            if italic then
+                resolved_face = italic
+                synthetic_bold = true
+            else
+                synthetic_bold = true
+            end
         end
+        -- italic with no file found: use base face (no synthetic italic available)
     end
 
     -- Apply font scale
@@ -809,7 +822,7 @@ function Bookends:resolveLineConfig(face_name, font_size, style)
 
     return {
         face = Font:getFace(resolved_face, scaled_size),
-        bold = bold,
+        bold = synthetic_bold,
         italic = (style == "italic" or style == "bolditalic"),
     }
 end
@@ -3393,33 +3406,66 @@ function Bookends:showFontPicker(current_face, on_select, default_face)
     local FontList = require("fontlist")
     local ffiUtil = require("ffi/util")
 
-    -- Build sorted font list from FontList.fontinfo (same source as FontChooser)
+    -- Build font list: one entry per font family, preferring the Regular weight
     local fonts = {}
     local font_display_names = {} -- file → display name lookup
+    local families = {} -- family name → { file, name, rank }
     for font_file, font_info in pairs(FontList.fontinfo) do
         local info = font_info and font_info[1]
         if info then
             local name = FontList:getLocalizedFontName(font_file, 0) or info.name
-            local display = name
-            if info.bold then display = display .. " " .. _("bold") end
-            if info.italic then display = display .. " " .. _("italic") end
-            table.insert(fonts, { file = font_file, name = name, display = display })
-            font_display_names[font_file] = display
+            local prev = families[name]
+            -- Rank: lower = more "regular". Use both fontinfo flags and filename keywords.
+            local rank = 0
+            if info.bold then rank = rank + 2 end
+            if info.italic then rank = rank + 2 end
+            local lbase = (font_file:match("([^/]+)$") or ""):lower()
+            if lbase:find("regular") then
+                rank = rank - 1
+            elseif lbase:find("bold") or lbase:find("italic") or lbase:find("oblique") then
+                rank = rank + 2
+            elseif lbase:find("light") or lbase:find("thin") or lbase:find("heavy")
+                or lbase:find("black") or lbase:find("medium") or lbase:find("semibold")
+                or lbase:find("extrabold") or lbase:find("extralight") or lbase:find("ultralight")
+                or lbase:find("demibold") or lbase:find("book") then
+                rank = rank + 1
+            end
+            if not prev or rank < prev.rank then
+                families[name] = { file = font_file, name = name, rank = rank }
+            end
         end
     end
+    for _, entry in pairs(families) do
+        table.insert(fonts, { file = entry.file, name = entry.name, display = entry.name })
+        font_display_names[entry.file] = entry.name
+    end
     table.sort(fonts, function(a, b)
-        if a.name ~= b.name then return ffiUtil.strcoll(a.name, b.name) end
-        return ffiUtil.strcoll(a.display, b.display)
+        return ffiUtil.strcoll(a.name, b.name)
     end)
 
+    -- If current/default face is a variant not in the list, resolve to the family representative
+    local shown_files = {}
+    for _, f in ipairs(fonts) do shown_files[f.file] = true end
+    local function resolveToVisible(face)
+        if not face or shown_files[face] then return face end
+        local info = FontList.fontinfo[face]
+        if info and info[1] then
+            local name = FontList:getLocalizedFontName(face, 0) or info[1].name
+            if families[name] then return families[name].file end
+        end
+        return face
+    end
+
     local original_face = current_face
+    current_face = resolveToVisible(current_face)
+    default_face = resolveToVisible(default_face)
     local selected = current_face
     local per_page = 10
     local page = 1
 
     -- Find initial page for current font
     for i, f in ipairs(fonts) do
-        if f.file == current_face then
+        if f.file == selected then
             page = math.ceil(i / per_page)
             break
         end
