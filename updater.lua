@@ -13,7 +13,7 @@ local _last_check_time = nil  -- os.time() of last successful or attempted check
 local _check_in_flight = false
 local CHECK_INTERVAL = 3600   -- 1 hour
 
-local function getInstalledVersion()
+function Updater.getInstalledVersion()
     local DataStorage = require("datastorage")
     local meta_path = DataStorage:getDataDir() .. "/plugins/bookends.koplugin/_meta.lua"
     local ok_meta, meta = pcall(dofile, meta_path)
@@ -123,7 +123,7 @@ function Updater.checkBackground()
     _last_check_time = now
 
     UIManager:scheduleIn(0.1, function()
-        local installed_version = getInstalledVersion()
+        local installed_version = Updater.getInstalledVersion()
         local user_agent = "KOReader-Bookends/" .. installed_version
 
         -- Only fetch the latest release (lightweight)
@@ -157,7 +157,7 @@ end
 
 function Updater.check()
 
-    local installed_version = getInstalledVersion()
+    local installed_version = Updater.getInstalledVersion()
 
     local NetworkMgr = require("ui/network/manager")
     if not NetworkMgr:isWifiOn() then

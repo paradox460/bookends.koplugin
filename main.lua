@@ -1673,11 +1673,12 @@ function Bookends:buildMainMenu()
                 {
                     text_func = function()
                         Updater.checkBackground()
-                        local ver = Updater.getAvailableUpdate()
-                        if ver then
-                            return _("Update available: v") .. ver
+                        local current = Updater.getInstalledVersion()
+                        local available = Updater.getAvailableUpdate()
+                        if available then
+                            return "v" .. current .. " \xE2\x86\x92 v" .. available
                         end
-                        return _("Check for updates")
+                        return _("Check for updates") .. " (v" .. current .. ")"
                     end,
                     keep_menu_open = true,
                     callback = function()
