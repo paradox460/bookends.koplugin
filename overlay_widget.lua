@@ -950,6 +950,109 @@ function OverlayWidget.paintProgressBar(bb, x, y, w, h, fraction, ticks, style, 
         local dot_cy = oy + math.floor((thickness - dot_r * 2) / 2)
         paintCircle(dot_cx, dot_cy, dot_r, resolveColor(custom_tick, Blitbuffer.COLOR_BLACK))
 
+    elseif style == "wavy" then
+        -- Wavy ribbon: the entire bar follows a sine wave path.
+        -- Two-toned fill with a position dot riding the curve.
+        local wave_fill = resolveColor(custom_fill, Blitbuffer.COLOR_DARK_GRAY)
+        local wave_track = resolveColor(custom_track, Blitbuffer.COLOR_GRAY)
+        local wave_dot = resolveColor(custom_tick, Blitbuffer.COLOR_BLACK)
+
+        local amplitude = math.floor(thickness * 0.35)
+        local ribbon_h = math.max(3, math.floor(thickness * 0.4))
+        local half_ribbon = math.floor(ribbon_h / 2)
+        local mid = oy + math.floor(thickness / 2)
+        local two_pi = 2 * math.pi
+
+        -- Phase-lock: adjust wavelength so both ends land on zero crossings.
+        -- sin(2π * (length-1) / λ) = 0 when (length-1) = n * λ/2
+        local target_wl = math.max(20, math.floor(thickness * 2.5))
+        local half_cycles = math.max(1, math.floor((length - 1) / (target_wl / 2) + 0.5))
+        local wavelength = 2 * (length - 1) / half_cycles
+
+        local fill_len = math.floor(length * fraction)
+        local fill_start = reverse and (length - fill_len) or 0
+        local fill_end = fill_start + fill_len
+
+        -- Helper: wave center y at position i
+        local function wave_y(i)
+            return mid + math.floor(amplitude * math.sin(two_pi * i / wavelength))
+        end
+
+        -- End cap circles (behind the ribbon, same size and color as the wave)
+        local cap_r = half_ribbon
+        local start_color = (0 >= fill_start and 0 < fill_end) and wave_fill or wave_track
+        local end_color = ((length - 1) >= fill_start and (length - 1) < fill_end) and wave_fill or wave_track
+        local function paintCap(cx, cy, color)
+            if not color then return end
+            local rx, ry = cx - cap_r, cy - cap_r
+            local d = cap_r * 2
+            if vertical then
+                bb:paintRoundedRect(ry, rx, d, d, color, cap_r)
+            else
+                bb:paintRoundedRect(rx, ry, d, d, color, cap_r)
+            end
+        end
+        paintCap(ox, wave_y(0), start_color)
+        paintCap(ox + length - 1, wave_y(length - 1), end_color)
+
+        -- Paint ribbon column by column
+        for i = 0, length - 1 do
+            local cy = wave_y(i)
+            local ry = cy - half_ribbon
+            local in_fill = i >= fill_start and i < fill_end
+            local color = in_fill and wave_fill or wave_track
+            if color then
+                if vertical then
+                    bb:paintRect(ry, ox + i, ribbon_h, 1, color)
+                else
+                    bb:paintRect(ox + i, ry, 1, ribbon_h, color)
+                end
+            end
+        end
+
+        -- Chapter ticks — vertical lines through the ribbon at each chapter boundary
+        for _, tick in ipairs(ticks or {}) do
+            local tick_frac = type(tick) == "table" and tick[1] or tick
+            local tick_w = type(tick) == "table" and tick[2] or 1
+            if reverse then tick_frac = 1 - tick_frac end
+            local tick_pos = math.floor(length * tick_frac)
+            if tick_pos > 0 and tick_pos < length then
+                local cy = wave_y(tick_pos)
+                local th = math.max(1, math.floor(ribbon_h * tick_height_pct / 100))
+                local ty = cy - math.floor(th / 2)
+                local in_fill = tick_pos >= fill_start and tick_pos < fill_end
+                local base_tick = wave_dot
+                if base_tick then
+                    local tick_color
+                    if invert_read_ticks ~= false and in_fill then
+                        tick_color = Blitbuffer.COLOR_WHITE
+                    else
+                        tick_color = base_tick
+                    end
+                    if vertical then
+                        bb:paintRect(ty, ox + tick_pos, th, tick_w, tick_color)
+                    else
+                        bb:paintRect(ox + tick_pos, ty, tick_w, th, tick_color)
+                    end
+                end
+            end
+        end
+
+        -- Position dot riding the wave
+        if wave_dot then
+            local dot_r = math.max(4, math.floor(thickness * 0.35))
+            local pos_i = reverse and (length - fill_len) or fill_len
+            pos_i = math.max(0, math.min(length - 1, pos_i))
+            local dot_cy = wave_y(pos_i)
+            local dot_cx = ox + pos_i - dot_r
+            local dot_dy = dot_cy - dot_r
+            if vertical then
+                bb:paintRoundedRect(dot_dy, dot_cx, dot_r * 2, dot_r * 2, wave_dot, dot_r)
+            else
+                bb:paintRoundedRect(dot_cx, dot_dy, dot_r * 2, dot_r * 2, wave_dot, dot_r)
+            end
+        end
+
     elseif style == "solid" then
         local solid_fill = resolveColor(custom_fill, Blitbuffer.COLOR_GRAY_5)
         local solid_bg = resolveColor(custom_bg, Blitbuffer.COLOR_GRAY)

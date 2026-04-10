@@ -1881,14 +1881,14 @@ function Bookends:buildSingleBarMenu(bar_idx, bar_cfg)
         },
         {
             text_func = function()
-                local style_labels = { solid = _("Solid"), bordered = _("Bordered"), rounded = _("Rounded"), metro = _("Metro") }
+                local style_labels = { solid = _("Solid"), bordered = _("Bordered"), rounded = _("Rounded"), metro = _("Metro"), wavy = _("Wave") }
                 return _("Style") .. ": " .. (style_labels[bar_cfg.style] or _("Solid"))
             end,
             enabled_func = isEnabled,
             keep_menu_open = true,
             callback = function(touchmenu_instance)
                 bar_cfg.style = cycleNext(
-                    { "solid", "bordered", "rounded", "metro" },
+                    { "solid", "bordered", "rounded", "metro", "wavy" },
                     bar_cfg.style or "solid")
                 saveBar()
                 if touchmenu_instance then touchmenu_instance:updateItems() end
@@ -3017,7 +3017,7 @@ function Bookends:editLineString(pos, line_idx, touchmenu_instance)
     local bar_style_button = {
         text_func = function()
             if not hasBarToken() then return "" end
-            local labels = { bordered = _("Border"), solid = _("Solid"), rounded = _("Round"), metro = _("Metro") }
+            local labels = { bordered = _("Border"), solid = _("Solid"), rounded = _("Round"), metro = _("Metro"), wavy = _("Wave") }
             return labels[line_bar_style or "bordered"] or _("Border")
         end,
         enabled_func = hasBarToken,
@@ -3059,7 +3059,7 @@ function Bookends:editLineString(pos, line_idx, touchmenu_instance)
     bar_style_button.callback = function()
         format_dialog:onCloseKeyboard()
         local next_style = cycleNext(
-            { "bordered", "solid", "rounded", "metro" },
+            { "bordered", "solid", "rounded", "metro", "wavy" },
             line_bar_style or "bordered")
         line_bar_style = next_style ~= "bordered" and next_style or nil
         applyLivePreview()
