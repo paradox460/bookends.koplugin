@@ -1943,11 +1943,12 @@ function Bookends:buildSingleBarMenu(bar_idx, bar_cfg)
             keep_menu_open = true,
             callback = function(touchmenu_instance)
                 local is_side = bar_cfg.v_anchor == "left" or bar_cfg.v_anchor == "right"
-                local is_metro = (bar_cfg.style or "solid") == "metro"
+                local style = bar_cfg.style or "solid"
+                local axis_locked = style == "metro" or style == "wavy"
                 local cycle
-                if is_metro and is_side then
+                if axis_locked and is_side then
                     cycle = { "ttb", "btt" }
-                elseif is_metro then
+                elseif axis_locked then
                     cycle = { "ltr", "rtl" }
                 else
                     cycle = { "ltr", "rtl", "ttb", "btt" }

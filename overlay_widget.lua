@@ -964,10 +964,13 @@ function OverlayWidget.paintProgressBar(bb, x, y, w, h, fraction, ticks, style, 
         local two_pi = 2 * math.pi
 
         -- Phase-lock: adjust wavelength so both ends land on zero crossings.
-        -- sin(2π * (length-1) / λ) = 0 when (length-1) = n * λ/2
+        -- Force odd half-cycles so the wave starts going one way and ends
+        -- going the other ('W' shape). Reversed bars negate the sine ('M').
         local target_wl = math.max(20, math.floor(thickness * 2.5))
         local half_cycles = math.max(1, math.floor((length - 1) / (target_wl / 2) + 0.5))
+        if half_cycles % 2 == 0 then half_cycles = half_cycles + 1 end
         local wavelength = 2 * (length - 1) / half_cycles
+        local wave_sign = reverse and 1 or -1
 
         local fill_len = math.floor(length * fraction)
         local fill_start = reverse and (length - fill_len) or 0
@@ -975,7 +978,7 @@ function OverlayWidget.paintProgressBar(bb, x, y, w, h, fraction, ticks, style, 
 
         -- Helper: wave center y at position i
         local function wave_y(i)
-            return mid + math.floor(amplitude * math.sin(two_pi * i / wavelength))
+            return mid + math.floor(amplitude * wave_sign * math.sin(two_pi * i / wavelength))
         end
 
         -- End cap circles (behind the ribbon, same size and color as the wave)
