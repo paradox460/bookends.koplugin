@@ -244,6 +244,18 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
             end
             return "%bar"
         end)
+        -- Extract %C<depth>{N} (depth-specific chapter title with width limit)
+        format_str = format_str:gsub("%%C(%d){(%d+)}", function(depth, n)
+            local px = tonumber(n)
+            if px and px > 0 then
+                local key = "%C" .. depth
+                if not token_limits[key] then
+                    token_limits[key] = {}
+                end
+                table.insert(token_limits[key], px)
+            end
+            return "%C" .. depth
+        end)
         -- Extract %X{N} for single-char tokens
         format_str = format_str:gsub("(%%%a){(%d+)}", function(token, n)
             local px = tonumber(n)
@@ -285,6 +297,13 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
             return preview["%bar"] .. "{<=" .. n .. "}"
         end)
         r = r:gsub("%%bar", preview["%bar"])
+        -- Handle %C<depth>{N} and %C<depth> before generic patterns
+        r = r:gsub("%%C(%d){(%d+)}", function(depth, n)
+            return "{ch." .. depth .. "<=" .. n .. "}"
+        end)
+        r = r:gsub("%%C(%d)", function(depth)
+            return "[ch." .. depth .. "]"
+        end)
         r = r:gsub("(%%%a){(%d+)}", function(token, n)
             local label = preview[token]
             if label then
@@ -369,6 +388,7 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     local chapter_pages_left = ""
     local chapter_total_pages = ""
     local chapter_title = ""
+    local chapter_titles_by_depth = {}  -- { [1] = "Part II", [2] = "Chapter 1", ... }
     if needs("P", "g", "G", "l", "C") and pageno and ui.toc then
         -- Raw page calculation for %P (percentage)
         local chapter_start = ui.toc:getPreviousChapter(pageno)
@@ -399,6 +419,18 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
         if left then chapter_pages_left = math.max(0, left) end
         local title = ui.toc:getTocTitleByPage(pageno)
         if title and title ~= "" then chapter_title = title end
+        -- Depth-specific chapter titles for %C1, %C2, etc.
+        -- getTocTitleByPage above ensures the TOC is populated.
+        if format_str:find("%%C%d") then
+            local full_toc = ui.toc.toc
+            if full_toc then
+                for _, entry in ipairs(full_toc) do
+                    if entry.page and entry.page <= pageno and entry.depth then
+                        chapter_titles_by_depth[entry.depth] = entry.title or ""
+                    end
+                end
+            end
+        end
     end
 
     -- Bar token data (parallel channel — not embedded in text)
@@ -756,7 +788,24 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     }
     -- Per-token occurrence counters for matching limits
     local token_occurrence = {}
-    local result = result_str:gsub("(%%%a)", function(token)
+    -- Expand depth-specific chapter tokens (%C1, %C2, …) before single-char tokens,
+    -- so that %C2 isn't partially consumed as %C + literal "2".
+    local result = result_str:gsub("%%C(%d)", function(depth_str)
+        local d = tonumber(depth_str)
+        has_token = true
+        local val = chapter_titles_by_depth[d] or ""
+        if val ~= "" then all_empty = false end
+        local key = "%C" .. depth_str
+        if token_limits[key] then
+            token_occurrence[key] = (token_occurrence[key] or 0) + 1
+            local px = token_limits[key][token_occurrence[key]]
+            if px then
+                return "\x01" .. tostring(px) .. "\x02" .. val .. "\x03"
+            end
+        end
+        return val
+    end)
+    result = result:gsub("(%%%a)", function(token)
         local val = replace[token]
         if val == nil then return token end -- unknown token, leave as-is
         has_token = true

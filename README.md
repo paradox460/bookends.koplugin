@@ -82,7 +82,8 @@ Tokens are placeholders that expand to live values. Type `%` followed by a lette
 | `%T` | Document title | *The Great Gatsby* |
 | `%A` | Author(s) | *F. Scott Fitzgerald* |
 | `%S` | Series with index | *Dune #1* |
-| `%C` | Chapter/section title | *Chapter 3: The Valley* |
+| `%C` | Chapter/section title (deepest level) | *Chapter 3: The Valley* |
+| `%C1`…`%C9` | Chapter title at TOC depth N (menu shows 1–3; deeper levels work when typed manually) | `%C1` → *Part II*, `%C2` → *Chapter 3* |
 | `%N` | File name (no path/extension) | *The_Great_Gatsby* |
 | `%i` | Book language | *en* |
 | `%o` | Document format | *EPUB* |
