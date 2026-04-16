@@ -1,5 +1,6 @@
 local Config = require("config")
 local ConfirmBox = require("ui/widget/confirmbox")
+local DialogHelpers = require("dialog_helpers")
 local Device = require("device")
 local Font = require("ui/font")
 local InfoMessage = require("ui/widget/infomessage")
@@ -2020,105 +2021,39 @@ function Bookends:buildSingleBarMenu(bar_idx, bar_cfg)
 end
 
 function Bookends:showBarMarginAdjuster(bar_cfg, bar_idx, touchmenu_instance)
-    local restoreMenu = self:hideMenu(touchmenu_instance)
-    local original = {
-        margin_v = bar_cfg.margin_v or 0,
-        margin_left = bar_cfg.margin_left or 0,
-        margin_right = bar_cfg.margin_right or 0,
-    }
-
-    local margin_dialog
     local vert = bar_cfg.v_anchor == "left" or bar_cfg.v_anchor == "right"
-
-    local function nudge(field, delta)
-        bar_cfg[field] = math.max(0, (bar_cfg[field] or 0) + delta)
-        self.settings:saveSetting("progress_bar_" .. bar_idx, bar_cfg)
+    local setting_key = "progress_bar_" .. bar_idx
+    local function persist()
+        self.settings:saveSetting(setting_key, bar_cfg)
         self:markDirty()
-        margin_dialog:reinit()
     end
-
-    local function makeRow(label, field)
-        return {
-            { text = "-10", callback = function() nudge(field, -10) end },
-            { text = "-1", callback = function() nudge(field, -1) end },
-            { text_func = function()
-                return label .. ": " .. (bar_cfg[field] or 0)
-            end, enabled = false },
-            { text = "+1", callback = function() nudge(field, 1) end },
-            { text = "+10", callback = function() nudge(field, 10) end },
-        }
-    end
-
-    local edge_label = vert and _("Edge") or _("Vertical")
-    local start_label = vert and _("Top") or _("Left")
-    local end_label = vert and _("Bottom") or _("Right")
-
-    local ButtonDialog = require("ui/widget/buttondialog")
-    margin_dialog = ButtonDialog:new{
-        dismissable = false,
+    DialogHelpers.showNudgeGrid{
         title = _("Adjust margins"),
-        tap_close_callback = function()
-            for k, v in pairs(original) do
-                bar_cfg[k] = v
-            end
-            self.settings:saveSetting("progress_bar_" .. bar_idx, bar_cfg)
-            self:markDirty()
-            restoreMenu()
-        end,
-        buttons = {
-            makeRow(edge_label, "margin_v"),
-            makeRow(start_label, "margin_left"),
-            makeRow(end_label, "margin_right"),
-            {
-                {
-                    text = _("Cancel"),
-                    callback = function()
-                        for k, v in pairs(original) do
-                            bar_cfg[k] = v
-                        end
-                        self.settings:saveSetting("progress_bar_" .. bar_idx, bar_cfg)
-                        self:markDirty()
-                        UIManager:close(margin_dialog)
-                        restoreMenu()
-                    end,
-                },
-                {
-                    text = _("Default") .. " 0",
-                    callback = function()
-                        bar_cfg.margin_v = 0
-                        bar_cfg.margin_left = 0
-                        bar_cfg.margin_right = 0
-                        self.settings:saveSetting("progress_bar_" .. bar_idx, bar_cfg)
-                        self:markDirty()
-                        margin_dialog:reinit()
-                    end,
-                },
-                {
-                    text = _("Apply"),
-                    is_enter_default = true,
-                    callback = function()
-                        self.settings:saveSetting("progress_bar_" .. bar_idx, bar_cfg)
-                        UIManager:close(margin_dialog)
-                        restoreMenu()
-                    end,
-                },
-            },
+        rows = {
+            { label = vert and _("Edge") or _("Vertical"), field = "margin_v" },
+            { label = vert and _("Top") or _("Left"),      field = "margin_left" },
+            { label = vert and _("Bottom") or _("Right"),  field = "margin_right" },
         },
+        get_value = function(field) return bar_cfg[field] or 0 end,
+        set_value = function(field, value) bar_cfg[field] = value end,
+        on_row_change = persist,
+        on_cancel = persist,                 -- originals already restored; re-persist reverted state
+        on_default = function()
+            bar_cfg.margin_v = 0
+            bar_cfg.margin_left = 0
+            bar_cfg.margin_right = 0
+            persist()
+        end,
+        default_text = _("Default") .. " 0",
+        parent_menu = touchmenu_instance,
+        -- No on_apply: values are already persisted live.
     }
-    UIManager:show(margin_dialog)
 end
 
 --- Hide the touch menu so the user can see live changes on the page,
 --- then return a function that re-shows it at the same position.
 function Bookends:hideMenu(touchmenu_instance)
-    if not touchmenu_instance then return function() end end
-    -- The UIManager stack holds show_parent (a CenterContainer), not the TouchMenu itself.
-    local container = touchmenu_instance.show_parent or touchmenu_instance
-    UIManager:close(container, "ui")
-    return function()
-        UIManager:show(container)
-        touchmenu_instance:updateItems()
-    end
+    return DialogHelpers.hideParentMenu(touchmenu_instance)
 end
 
 function Bookends:showNudgeDialog(title, value, min_val, max_val, default_val, unit, on_change, on_close, small_step, large_step, touchmenu_instance, on_default, default_label)
@@ -4065,83 +4000,31 @@ end
 
 
 function Bookends:showMarginAdjuster(touchmenu_instance)
-    local restoreMenu = self:hideMenu(touchmenu_instance)
-    local original = {
-        margin_top = self.defaults.margin_top,
-        margin_bottom = self.defaults.margin_bottom,
-        margin_left = self.defaults.margin_left,
-        margin_right = self.defaults.margin_right,
-    }
-
-    local margin_dialog
-
-    local function nudge(field, delta)
-        self.defaults[field] = math.max(0, self.defaults[field] + delta)
-        self:markDirty()
-        margin_dialog:reinit()
-    end
-
-    local function makeRow(label, field)
-        return {
-            { text = "-10", callback = function() nudge(field, -10) end },
-            { text = "-1", callback = function() nudge(field, -1) end },
-            { text_func = function()
-                return label .. ": " .. self.defaults[field]
-            end, enabled = false },
-            { text = "+1", callback = function() nudge(field, 1) end },
-            { text = "+10", callback = function() nudge(field, 10) end },
-        }
-    end
-
-    local buttons = {
-        makeRow(_("Top"), "margin_top"),
-        makeRow(_("Bottom"), "margin_bottom"),
-        makeRow(_("Left"), "margin_left"),
-        makeRow(_("Right"), "margin_right"),
-        {
-            {
-                text = _("Cancel"),
-                callback = function()
-                    for k, v in pairs(original) do
-                        self.defaults[k] = v
-                    end
-                    self:markDirty()
-                    UIManager:close(margin_dialog)
-                    restoreMenu()
-                end,
-            },
-            {
-                text = _("Default"),
-                callback = function()
-                    for k, v in pairs(self.DEFAULT_MARGINS) do
-                        self.defaults[k] = v
-                    end
-                    self:markDirty()
-                    margin_dialog:reinit()
-                end,
-            },
-            {
-                text = _("Apply"),
-                is_enter_default = true,
-                callback = function()
-                    self.settings:saveSetting("margin_top", self.defaults.margin_top)
-                    self.settings:saveSetting("margin_bottom", self.defaults.margin_bottom)
-                    self.settings:saveSetting("margin_left", self.defaults.margin_left)
-                    self.settings:saveSetting("margin_right", self.defaults.margin_right)
-                    UIManager:close(margin_dialog)
-                    restoreMenu()
-                end,
-            },
-        },
-    }
-
-    local ButtonDialog = require("ui/widget/buttondialog")
-    margin_dialog = ButtonDialog:new{
-        dismissable = false,
+    DialogHelpers.showNudgeGrid{
         title = _("Adjust margins"),
-        buttons = buttons,
+        rows = {
+            { label = _("Top"),    field = "margin_top" },
+            { label = _("Bottom"), field = "margin_bottom" },
+            { label = _("Left"),   field = "margin_left" },
+            { label = _("Right"),  field = "margin_right" },
+        },
+        get_value = function(field) return self.defaults[field] end,
+        set_value = function(field, value) self.defaults[field] = value end,
+        on_row_change = function() self:markDirty() end,
+        on_cancel = function() self:markDirty() end,  -- originals already restored
+        on_default = function()
+            for k, v in pairs(Config.DEFAULT_MARGINS) do
+                self.defaults[k] = v
+            end
+            self:markDirty()
+        end,
+        on_apply = function()
+            for _, key in ipairs({ "margin_top", "margin_bottom", "margin_left", "margin_right" }) do
+                self.settings:saveSetting(key, self.defaults[key])
+            end
+        end,
+        parent_menu = touchmenu_instance,
     }
-    UIManager:show(margin_dialog)
 end
 
 return Bookends
