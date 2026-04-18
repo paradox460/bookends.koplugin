@@ -129,6 +129,12 @@ function Tokens.buildConditionState(ui, session_elapsed, session_pages_read, pai
         state.connected = (NetworkMgr:isWifiOn() and NetworkMgr:isConnected()) and "yes" or "no"
     end
 
+    -- Bluetooth (via kobo.koplugin if present; intentionally nil otherwise)
+    local kp = ui.kobo_plugin
+    if kp and kp.kobo_bluetooth then
+        state.bluetooth = kp.kobo_bluetooth:isBluetoothEnabled() and "on" or "off"
+    end
+
     -- Battery & charging
     local powerd = Device:getPowerDevice()
     if powerd then
@@ -295,7 +301,7 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
             ["%N"] = "[file]", ["%i"] = "[lang]",
             ["%o"] = "[format]", ["%q"] = "[highlights]", ["%Q"] = "[notes]", ["%x"] = "[bookmarks]",
             ["%r"] = "[pg/hr]", ["%E"] = "[total]",
-            ["%b"] = "[batt]", ["%B"] = "[batt]", ["%W"] = "[wifi]",
+            ["%b"] = "[batt]", ["%B"] = "[batt]", ["%W"] = "[wifi]", ["%X"] = "[bt]",
             ["%f"] = "[light]", ["%F"] = "[warmth]",
             ["%m"] = "[mem]", ["%M"] = "[rss]",
             ["%v"] = "[disk]",
@@ -669,6 +675,15 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
         end
     end
 
+    -- Bluetooth (via kobo.koplugin passthrough — hidden if plugin not loaded)
+    local bt_symbol = ""
+    if needs("X") then
+        local kp = ui.kobo_plugin
+        if kp and kp.kobo_bluetooth and kp.kobo_bluetooth:isBluetoothEnabled() then
+            bt_symbol = "\xF3\xB0\x82\xAF" -- U+F00AF mdi-bluetooth
+        end
+    end
+
     -- Frontlight
     local fl_intensity = ""
     local fl_warmth = ""
@@ -779,6 +794,7 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
         ["%b"] = tostring(batt_lvl),
         ["%B"] = tostring(batt_symbol),
         ["%W"] = wifi_symbol,
+        ["%X"] = bt_symbol,
         ["%f"] = fl_intensity,
         ["%F"] = fl_warmth,
         ["%m"] = tostring(mem_usage),
