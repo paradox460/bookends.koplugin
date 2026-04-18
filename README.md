@@ -134,11 +134,14 @@ Tokens are placeholders that expand to live values. Type `%` followed by a lette
 | `%b` | Battery level | *73%* |
 | `%B` | Battery icon (dynamic) | Changes with charge level |
 | `%W` | Wi-Fi icon (dynamic) | Hidden when off, changes when connected/disconnected |
+| `%X` | Bluetooth icon (dynamic) | Hidden when off or kobo.koplugin not installed |
 | `%f` | Frontlight brightness | *18* or *OFF* |
 | `%F` | Frontlight warmth | *12* |
 | `%m` | RAM usage | *33%* |
 
 Page tokens respect **stable page numbers** and **hidden flows** (non-linear EPUB content). Time-left and reading speed tokens use the **statistics plugin**. Session timer and pages reset each time you wake the device.
+
+`%X` and the `bluetooth` condition require [kobo.koplugin](https://github.com/OGKevin/kobo.koplugin) installed on a supported Kobo device. They render empty / never match otherwise.
 
 #### Inline progress bar
 
@@ -175,6 +178,7 @@ Operators: `=` (equals), `<` (less than), `>` (greater than).
 | Condition | Values | Description |
 |-----------|--------|-------------|
 | `wifi` | on / off | Wi-Fi radio state |
+| `bluetooth` | on / off | Bluetooth adapter state (requires [kobo.koplugin](https://github.com/OGKevin/kobo.koplugin)) |
 | `connected` | yes / no | Network connection state |
 | `batt` | 0–100 | Battery percentage |
 | `charging` | yes / no | Charging or charged |
