@@ -56,7 +56,7 @@ Bookends.TOKEN_CATALOG = {
         { "%b", _("Battery level") },
         { "%B", _("Battery icon (dynamic)") },
         { "%W", _("Wi-Fi icon (dynamic)") },
-        { "%V", _("Page-turn direction (shows when inverted)") },
+        { "%V", _("Page-turn direction \xE2\x87\x84 (shows when inverted)") },
         { "%f", _("Frontlight brightness") },
         { "%F", _("Frontlight warmth") },
         { "%m", _("RAM used %") },
