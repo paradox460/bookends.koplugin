@@ -206,18 +206,39 @@ function PresetManagerModal._rebuild(self)
     if self.previewing then
         state_line = state_line .. "  //  " .. T(_("Previewing: %1"), self.previewing.name)
     end
+    local state_group = HorizontalGroup:new{
+        HorizontalSpan:new{ width = left_pad },
+        TextWidget:new{
+            text = state_line,
+            face = Font:getFace("cfont", 14),
+            forced_height = row_height,
+            forced_baseline = baseline,
+            fgcolor = Blitbuffer.COLOR_BLACK,
+        },
+    }
+    if self.previewing and self.previewing.kind == "local" then
+        local overflow = TextWidget:new{
+            text = "  \xE2\x8B\xAF",
+            face = Font:getFace("infofont", 18),
+            forced_height = row_height,
+            forced_baseline = baseline,
+            bold = true,
+            fgcolor = Blitbuffer.COLOR_BLACK,
+        }
+        local overflow_ic = InputContainer:new{
+            dimen = Geom:new{ w = Screen:scaleBySize(40), h = row_height },
+            overflow,
+        }
+        overflow_ic.ges_events = { TapSelect = { GestureRange:new{ ges = "tap", range = overflow_ic.dimen } } }
+        overflow_ic.onTapSelect = function()
+            PresetManagerModal._openOverflow(self)
+            return true
+        end
+        table.insert(state_group, overflow_ic)
+    end
     table.insert(vg, LeftContainer:new{
         dimen = Geom:new{ w = width, h = row_height },
-        HorizontalGroup:new{
-            HorizontalSpan:new{ width = left_pad },
-            TextWidget:new{
-                text = state_line,
-                face = Font:getFace("cfont", 14),
-                forced_height = row_height,
-                forced_baseline = baseline,
-                fgcolor = Blitbuffer.COLOR_BLACK,
-            },
-        },
+        state_group,
     })
 
     -- Body
@@ -411,6 +432,151 @@ function PresetManagerModal._saveCurrentAsPreset(self)
     }
     UIManager:show(dlg)
     dlg:onShowKeyboard()
+end
+
+function PresetManagerModal._openOverflow(self)
+    if not self.previewing or self.previewing.kind ~= "local" then return end
+    local ButtonDialogTitle = require("ui/widget/buttondialogtitle")
+    local entry_name = self.previewing.name
+    local entry_filename = self.previewing.filename
+    -- Snapshot the entry for the closures to use — self.previewing may change.
+    local entry = { name = entry_name, filename = entry_filename, preset = self.previewing.data }
+    local dlg
+    dlg = ButtonDialogTitle:new{
+        title = entry.name,
+        title_align = "center",
+        buttons = {
+            {{ text = _("Rename…"), callback = function()
+                UIManager:close(dlg)
+                PresetManagerModal._rename(self, entry)
+            end }},
+            {{ text = _("Edit description…"), callback = function()
+                UIManager:close(dlg)
+                PresetManagerModal._editDescription(self, entry)
+            end }},
+            {{ text = _("Duplicate"), callback = function()
+                UIManager:close(dlg)
+                PresetManagerModal._duplicate(self, entry)
+            end }},
+            {{ text = _("Delete"), callback = function()
+                UIManager:close(dlg)
+                PresetManagerModal._delete(self, entry)
+            end }},
+        },
+    }
+    UIManager:show(dlg)
+end
+
+function PresetManagerModal._rename(self, entry)
+    local dlg
+    dlg = InputDialog:new{
+        title = _("Rename preset"),
+        input = entry.name,
+        buttons = {{
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dlg) end },
+            { text = _("Rename"), is_enter_default = true, callback = function()
+                local new_name = dlg:getInputText()
+                if new_name and new_name ~= "" and new_name ~= entry.name then
+                    local new_filename = self.bookends:renamePresetFile(entry.filename, new_name)
+                    if new_filename then
+                        local cycle = self.bookends.settings:readSetting("preset_cycle") or {}
+                        for i, f in ipairs(cycle) do
+                            if f == entry.filename then cycle[i] = new_filename; break end
+                        end
+                        self.bookends.settings:saveSetting("preset_cycle", cycle)
+                        if self.bookends:getActivePresetFilename() == entry.filename then
+                            self.bookends:setActivePresetFilename(new_filename)
+                        end
+                        self.previewing = nil
+                        self.bookends._previewing = false
+                    end
+                end
+                UIManager:close(dlg)
+                self.rebuild()
+            end },
+        }},
+    }
+    UIManager:show(dlg)
+    dlg:onShowKeyboard()
+end
+
+function PresetManagerModal._editDescription(self, entry)
+    local current = (entry.preset and entry.preset.description) or ""
+    local dlg
+    dlg = InputDialog:new{
+        title = _("Edit description"),
+        input = current,
+        buttons = {{
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dlg) end },
+            { text = _("Save"), is_enter_default = true, callback = function()
+                local new_desc = dlg:getInputText() or ""
+                local path = self.bookends:presetDir() .. "/" .. entry.filename
+                local data = self.bookends.loadPresetFile(path)
+                if data then
+                    data.description = new_desc ~= "" and new_desc or nil
+                    self.bookends:writePresetFile(data.name or entry.name, data)
+                end
+                UIManager:close(dlg)
+                self.rebuild()
+            end },
+        }},
+    }
+    UIManager:show(dlg)
+    dlg:onShowKeyboard()
+end
+
+function PresetManagerModal._duplicate(self, entry)
+    local suggested = entry.name .. " (" .. _("copy") .. ")"
+    local dlg
+    dlg = InputDialog:new{
+        title = _("Duplicate preset"),
+        input = suggested,
+        buttons = {{
+            { text = _("Cancel"), id = "close", callback = function() UIManager:close(dlg) end },
+            { text = _("Save"), is_enter_default = true, callback = function()
+                local new_name = dlg:getInputText()
+                if new_name and new_name ~= "" then
+                    local path = self.bookends:presetDir() .. "/" .. entry.filename
+                    local data = self.bookends.loadPresetFile(path)
+                    if data then
+                        data.name = new_name
+                        self.bookends:writePresetFile(new_name, data)
+                    end
+                end
+                UIManager:close(dlg)
+                self.rebuild()
+            end },
+        }},
+    }
+    UIManager:show(dlg)
+    dlg:onShowKeyboard()
+end
+
+function PresetManagerModal._delete(self, entry)
+    UIManager:show(ConfirmBox:new{
+        text = T(_("Delete preset '%1'?"), entry.name),
+        ok_text = _("Delete"),
+        ok_callback = function()
+            self.bookends:deletePresetFile(entry.filename)
+            local cycle = self.bookends.settings:readSetting("preset_cycle") or {}
+            for i = #cycle, 1, -1 do
+                if cycle[i] == entry.filename then table.remove(cycle, i) end
+            end
+            self.bookends.settings:saveSetting("preset_cycle", cycle)
+            if self.bookends:getActivePresetFilename() == entry.filename then
+                local remaining = self.bookends:readPresetFiles()
+                if remaining[1] then
+                    self.bookends:applyPresetFile(remaining[1].filename)
+                else
+                    self.bookends:setActivePresetFilename(nil)
+                end
+            end
+            self.previewing = nil
+            self.bookends._previewing = false
+            self.bookends:markDirty()
+            self.rebuild()
+        end,
+    })
 end
 
 return PresetManagerModal
