@@ -11,6 +11,7 @@ IconPicker.CATALOG = {
     { _("Dynamic"), {
         { "\xEE\x9E\x90", _("Battery (changes with level)"), "%B" },     -- U+E790
         { "\xEE\xB2\xA8", _("Wi-Fi (changes with status)"), "%W" },      -- U+ECA8
+        { "\xF3\xB0\x82\xAF", _("Bluetooth (needs kobo.koplugin)"), "%X" }, -- U+F00AF mdi-bluetooth
     }},
     { _("Device"), {
         { "\xEF\x83\xAB", _("Lightbulb") },             -- U+F0EB fa-lightbulb-o
@@ -23,6 +24,7 @@ IconPicker.CATALOG = {
         { "\xEF\x80\x91", _("Power") },                 -- U+F011 fa-power-off
         { "\xEF\x84\x8B", _("Mobile") },                -- U+F10B fa-mobile
         { "\xEF\x87\xAB", _("Wi-Fi") },                 -- U+F1EB fa-wifi
+        { "\xF3\xB0\x82\xB2", _("Bluetooth (off/static)") },  -- U+F00B2 mdi-bluetooth-off
         { "\xEF\x83\x82", _("Cloud") },                 -- U+F0C2 fa-cloud
         { "\xEE\xA9\x9A", _("Memory chip") },           -- U+EA5A
         { "\xEF\x82\xA0", _("HDD / disk") },             -- U+F0A0 fa-hdd-o

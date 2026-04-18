@@ -55,6 +55,7 @@ Bookends.TOKEN_CATALOG = {
         { "%b", _("Battery level") },
         { "%B", _("Battery icon (dynamic)") },
         { "%W", _("Wi-Fi icon (dynamic)") },
+        { "%X", _("Bluetooth icon (needs kobo.koplugin)") },
         { "%f", _("Frontlight brightness") },
         { "%F", _("Frontlight warmth") },
         { "%m", _("RAM used %") },
@@ -71,6 +72,7 @@ Bookends.TOKEN_CATALOG = {
 Bookends.CONDITIONAL_CATALOG = {
     { _("Examples"), {
         { "[if:wifi=on]%W[/if]", _("Show wifi icon when connected") },
+        { "[if:bluetooth=on]%X[/if]", _("Show bluetooth icon when adapter on") },
         { "[if:batt<20]LOW %b[/if]", _("Warning when battery below 20%") },
         { "[if:charging=yes]\xE2\x9A\xA1[/if] %b", _("Bolt icon when charging") },
         { "[if:speed>0]%r pg/hr[/if]", _("Speed, hidden until calculated") },
@@ -84,6 +86,7 @@ Bookends.CONDITIONAL_CATALOG = {
     }},
     { _("Reference"), {
         { "[if:wifi=on]...[/if]", _("wifi — on / off") },
+        { "[if:bluetooth=on]...[/if]", _("bluetooth — on / off (needs kobo.koplugin)") },
         { "[if:connected=yes]...[/if]", _("connected — yes / no") },
         { "[if:batt<50]...[/if]", _("batt — 0 to 100") },
         { "[if:charging=yes]...[/if]", _("charging — yes / no") },
