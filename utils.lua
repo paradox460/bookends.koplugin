@@ -54,9 +54,12 @@ function Utils.cycleNext(tbl, current)
     return tbl[1]
 end
 
---- Resolve a font display name (e.g. "Oooh Baby") to its file path.
+--- Resolve a font display name (e.g. "Raleway") to its file path.
 -- KOReader's cre_font_family_fonts stores display names, but Font:getFace
 -- needs a file. Returns the input as-is if it already looks like a path.
+-- Uses CRE's own face-to-file logic when available (picks the regular
+-- variant, matching the stock KOReader font menu). Falls back to
+-- rank-based FontList iteration — same heuristic the bookends picker uses.
 -- Returns nil if no matching font is installed.
 local function resolveFontNameToFile(name_or_file)
     if type(name_or_file) ~= "string" or name_or_file == "" then return nil end
@@ -64,13 +67,42 @@ local function resolveFontNameToFile(name_or_file)
        or name_or_file:match("%.[oO][tT][fFcC]$") then
         return name_or_file  -- already a file path
     end
-    local FontList = require("fontlist")
-    for file, info in pairs(FontList.fontinfo or {}) do
-        if info and info[1] and info[1].name == name_or_file then
+    -- Preferred: ask CRE (matches stock KOReader's font resolution)
+    local ok_cre, cre = pcall(function()
+        return require("document/credocument"):engineInit()
+    end)
+    if ok_cre and cre and cre.getFontFaceFilenameAndFaceIndex then
+        local ok_call, file = pcall(cre.getFontFaceFilenameAndFaceIndex, name_or_file)
+        if ok_call and type(file) == "string" and file ~= "" then
             return file
         end
     end
-    return nil
+    -- Fallback: rank-based FontList iteration (most-regular variant wins)
+    local FontList = require("fontlist")
+    local best_file, best_rank = nil, math.huge
+    for file, info in pairs(FontList.fontinfo or {}) do
+        if info and info[1] and info[1].name == name_or_file then
+            local fi = info[1]
+            local rank = 0
+            if fi.bold then rank = rank + 2 end
+            if fi.italic then rank = rank + 2 end
+            local lbase = (file:match("([^/]+)$") or ""):lower()
+            if lbase:find("regular") then
+                rank = rank - 1
+            elseif lbase:find("bold") or lbase:find("italic") or lbase:find("oblique") then
+                rank = rank + 2
+            elseif lbase:find("light") or lbase:find("thin") or lbase:find("heavy")
+                or lbase:find("black") or lbase:find("medium") or lbase:find("semibold")
+                or lbase:find("extrabold") or lbase:find("extralight") or lbase:find("ultralight")
+                or lbase:find("demibold") or lbase:find("book") then
+                rank = rank + 1
+            end
+            if rank < best_rank then
+                best_file, best_rank = file, rank
+            end
+        end
+    end
+    return best_file
 end
 
 --- Resolve a font-face string to a concrete file path.
