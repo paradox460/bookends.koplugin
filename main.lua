@@ -127,6 +127,9 @@ function Bookends:init()
     -- Migrate embedded presets to individual files (one-time)
     self:migratePresetsToFiles()
 
+    -- Preset Manager: one-time migration + first-run provisioning
+    self:runPresetManagerMigration()
+
     -- Register gesture/dispatcher actions
     self:onDispatcherRegisterActions()
 
@@ -167,6 +170,68 @@ function Bookends:onDispatcherRegisterActions()
         args = {true, false},
         toggle = {_("on"), _("off")},
     })
+end
+
+--- One-time migration + first-run provisioning for the Preset Manager.
+--- Idempotent — gated by preset_manager_migration_done flag.
+function Bookends:runPresetManagerMigration()
+    if self.settings:isTrue("preset_manager_migration_done") then return end
+
+    local lfs = require("libs/libkoreader-lfs")
+
+    -- 1. Rename last_cycled_preset (human name) → active_preset_filename (file)
+    local last_name = self.settings:readSetting("last_cycled_preset")
+    if last_name and last_name ~= "" then
+        local presets = self:readPresetFiles()
+        for _, p in ipairs(presets) do
+            if p.name == last_name then
+                self.settings:saveSetting("active_preset_filename", p.filename)
+                break
+            end
+        end
+        self.settings:delSetting("last_cycled_preset")
+    end
+
+    -- 2. Seed preset_cycle with all existing Personal presets
+    if not self.settings:readSetting("preset_cycle") then
+        local presets = self:readPresetFiles()
+        local cycle = {}
+        for _, p in ipairs(presets) do
+            table.insert(cycle, p.filename)
+        end
+        self.settings:saveSetting("preset_cycle", cycle)
+    end
+
+    -- 3. First-run: provision Basic bookends if bookends_presets/ is empty
+    self:ensurePresetDir()
+    local dir = self:presetDir()
+    local has_any = false
+    for f in lfs.dir(dir) do
+        if f:match("%.lua$") then has_any = true; break end
+    end
+    if not has_any then
+        local DataStorage = require("datastorage")
+        local source = DataStorage:getDataDir() .. "/plugins/bookends.koplugin/basic_bookends.lua"
+        local dest = dir .. "/basic_bookends.lua"
+        local src_file = io.open(source, "rb")
+        if src_file then
+            local dst_file = io.open(dest, "wb")
+            if dst_file then
+                dst_file:write(src_file:read("*a"))
+                dst_file:close()
+                if not self.settings:readSetting("active_preset_filename") then
+                    self.settings:saveSetting("active_preset_filename", "basic_bookends.lua")
+                end
+                local cycle = self.settings:readSetting("preset_cycle") or {}
+                table.insert(cycle, "basic_bookends.lua")
+                self.settings:saveSetting("preset_cycle", cycle)
+            end
+            src_file:close()
+        end
+    end
+
+    self.settings:saveSetting("preset_manager_migration_done", true)
+    self.settings:flush()
 end
 
 function Bookends:setupTouchZones()
@@ -236,27 +301,46 @@ function Bookends:onSetBookends(new_state)
 end
 
 function Bookends:onCycleBookendsPreset()
-    local presets = self:readPresetFiles()
-    if #presets == 0 then return true end
+    -- Flush first so unsaved overlay edits autosave to the departing preset.
+    if self.settings then self.settings:flush() end
+    local ok_save, save_err = pcall(self.autosaveActivePreset, self)
+    if not ok_save then require("logger").warn("bookends: pre-cycle autosave failed:", save_err) end
 
+    local cycle = self.settings:readSetting("preset_cycle") or {}
+    if #cycle == 0 then return true end
+
+    local active = self:getActivePresetFilename()
     local idx = 1
-    local last = self.settings:readSetting("last_cycled_preset")
-    if last then
-        for i, entry in ipairs(presets) do
-            if entry.name == last then
-                idx = (i % #presets) + 1
-                break
-            end
+    for i, entry in ipairs(cycle) do
+        if entry == active or (active == nil and entry == "_empty") then
+            idx = (i % #cycle) + 1
+            break
         end
     end
 
-    self.settings:saveSetting("last_cycled_preset", presets[idx].name)
-    local ok, err = pcall(self.loadPreset, self, presets[idx].preset)
+    local next_entry = cycle[idx]
+    local Notification = require("ui/widget/notification")
+
+    if next_entry == "_empty" then
+        for _, pos in pairs(self.positions) do pos.lines = {} end
+        self:setActivePresetFilename(nil)
+        self:markDirty()
+        Notification:notify(_("(No overlay)"))
+        return true
+    end
+
+    local ok, err = self:applyPresetFile(next_entry)
     if not ok then
-        local Notification = require("ui/widget/notification")
         Notification:notify(T(_("Preset error: %1"), tostring(err)))
+        return true
     end
     self:markDirty()
+    local presets = self:readPresetFiles()
+    local name = next_entry
+    for _, p in ipairs(presets) do
+        if p.filename == next_entry then name = p.name; break end
+    end
+    Notification:notify(T(_("Preset: %1"), name))
     return true
 end
 
@@ -1172,6 +1256,9 @@ end
 function Bookends:onFlushSettings()
     if self.settings then
         self.settings:flush()
+        -- Autosave the active preset (no-op if _previewing or no active preset).
+        local ok, err = pcall(self.autosaveActivePreset, self)
+        if not ok then require("logger").warn("bookends: autosave failed:", err) end
     end
 end
 
@@ -1277,94 +1364,6 @@ function Bookends:showNudgeDialog(title, value, min_val, max_val, default_val, u
     }
     UIManager:show(dialog)
 end
-
-Bookends.BUILT_IN_PRESETS = {
-    -- Nerd Font icon references used in presets:
-    -- U+F017 = \xEF\x80\x97 clock
-    -- U+F024 = \xEF\x80\xA4 flag
-    -- U+F02D = \xEF\x80\xAD book
-    -- U+F06E = \xEF\x81\xAE eye
-    -- U+F097 = \xEF\x82\x97 bookmark
-    -- U+F0A0 = \xEF\x82\xA0 HDD
-    -- U+F0EB = \xEF\x83\xAB lightbulb
-    -- U+F185 = \xEF\x86\x85 sun
-    -- U+EA5A = \xEE\xA9\x9A memory chip
-    -- U+ECA8 = \xEE\xB2\xA8 wifi on (dynamic via %W)
-    {
-        name = _("Classic alternating"),
-        preset = {
-            enabled = true,
-            defaults = {
-                margin_top = 10, margin_bottom = 50,
-                margin_left = 18, margin_right = 18,
-            },
-            positions = {
-                tl = { lines = { "%T" }, line_font_size = { [1] = 18 }, line_style = { [1] = "bolditalic" }, line_page_filter = { [1] = "even" } },
-                tc = { lines = {} },
-                tr = { lines = { "%C" }, line_font_size = { [1] = 18 }, line_style = { [1] = "bolditalic" }, line_page_filter = { [1] = "odd" } },
-                bl = { lines = {} },
-                bc = { lines = { "p%c" }, line_font_size = { [1] = 18 } },
-                br = { lines = {} },
-            },
-        },
-    },
-    {
-        name = _("Rich detail"),
-        preset = {
-            enabled = true,
-            defaults = {
-                margin_top = 10, margin_bottom = 25,
-                margin_left = 18, margin_right = 18,
-            },
-            positions = {
-                tl = { lines = { "%A \xE2\x8B\xAE %T", "%S" }, line_font_size = { [1] = 12 } },
-                tc = { lines = { "%k \xC2\xB7 %a %d" }, line_font_size = { [1] = 14 }, line_style = { [1] = "bold" } },
-                tr = { lines = { "%C", "%x Bookmark(s) \xEF\x82\x97" } },
-                bl = { lines = { "\xEF\x83\xAB %F", "\xEF\x86\x85 %f", "\xE2\x8F\xB3 %R \xC2\xBB %s page session" } },
-                bc = { lines = { "Page %c of %t" }, v_offset = 30, line_font_size = { [1] = 18 } },
-                br = { lines = { "%B", "%W", "%q highlight(s) \xEF\x80\xA4" } },
-            },
-        },
-    },
-    {
-        name = _("Speed reader"),
-        preset = {
-            enabled = true,
-            defaults = {
-                margin_top = 10, margin_bottom = 25,
-                margin_left = 18, margin_right = 18,
-            },
-            positions = {
-                tl = { lines = { "\xEF\x80\x97 %k" }, line_font_size = { [1] = 16 }, line_style = { [1] = "bold" } },
-                tc = { lines = { "\xE2\x8F\xB3 %R \xC2\xBB %s page(s) read this session", "\xEF\x83\xA4 %r page(s)/hr" }, line_font_size = { [1] = 16 }, line_style = { [1] = "bold" } },
-                tr = { lines = { "%B %b" }, line_font_size = { [1] = 16 }, line_style = { [1] = "bold" } },
-                bl = { lines = { "%p", "\xEF\x81\xAE %E reading this book" } },
-                bc = { lines = { "Page %c of %t", "\xEF\x80\xAD %L pages ~ %H left in book" },
-                    v_offset = 4, line_font_size = { [1] = 18 }, line_style = { [1] = "italic", [2] = "bold" },
-                    line_v_nudge = { [1] = -14 } },
-                br = { lines = { "%P", "%l page(s) ~ %h left in chapter" }, line_font_size = { [2] = 12 } },
-            },
-        },
-    },
-    {
-        name = _("SimpleUI status bar"),
-        preset = {
-            enabled = true,
-            defaults = {
-                margin_top = 22, margin_bottom = 50,
-                margin_left = 35, margin_right = 35,
-            },
-            positions = {
-                tl = { lines = { "%k" }, line_font_size = { [1] = 15 } },
-                tc = { lines = {} },
-                tr = { lines = { "%W  %B%b  \xEF\x82\xA0 %v  \xEE\xA9\x9A %M  \xE2\x98\x80 %f" }, line_font_size = { [1] = 15 } },
-                bl = { lines = {} },
-                bc = { lines = { "Page %c of %t" }, line_font_size = { [1] = 18 } },
-                br = { lines = {} },
-            },
-        },
-    },
-}
 
 function Bookends:showFontPicker(current_face, on_select, default_face)
     local Blitbuffer = require("ffi/blitbuffer")
