@@ -239,9 +239,12 @@ function PresetManager.attach(Bookends)
         return new_filename
     end
 
-    function Bookends:updatePresetFile(filename, name)
+    -- Overwrites `filename` with preset_data (or the current overlay config when
+    -- preset_data is nil). Unlike writePresetFile, this does NOT auto-rename on
+    -- collision — it's the "update an existing preset" path.
+    function Bookends:updatePresetFile(filename, name, preset_data)
         local path = self:presetDir() .. "/" .. filename
-        local preset_data = self:buildPreset()
+        preset_data = preset_data or self:buildPreset()
         preset_data.name = name
         writePresetContents(path, name, preset_data)
     end

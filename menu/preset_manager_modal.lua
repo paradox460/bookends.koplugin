@@ -644,7 +644,8 @@ function PresetManagerModal._editDescription(self, entry)
                 local data = self.bookends.loadPresetFile(path)
                 if data then
                     data.description = new_desc ~= "" and new_desc or nil
-                    self.bookends:writePresetFile(data.name or entry.name, data)
+                    -- Overwrite in place (writePresetFile would rename on collision)
+                    self.bookends:updatePresetFile(entry.filename, data.name or entry.name, data)
                 end
                 UIManager:close(dlg)
                 self.rebuild()
