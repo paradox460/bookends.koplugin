@@ -293,63 +293,58 @@ function PresetManagerModal._rebuild(self)
         PresetManagerModal._renderGalleryRows(self, vg, width, row_height, font_size, baseline, left_pad)
     end
 
-    -- Footer buttons
-    local btn_close = TextWidget:new{
-        text = _("Close"),
-        face = Font:getFace("infofont", 16),
-        forced_height = row_height,
-        forced_baseline = baseline,
-        bold = true,
-        fgcolor = Blitbuffer.COLOR_BLACK,
-    }
-    local btn_close_ic = InputContainer:new{
-        dimen = Geom:new{ w = math.floor((width - Size.line.thick) / 2), h = row_height },
-        CenterContainer:new{
-            dimen = Geom:new{ w = math.floor((width - Size.line.thick) / 2), h = row_height },
-            btn_close,
-        },
-    }
-    btn_close_ic.ges_events = {
-        TapSelect = { GestureRange:new{ ges = "tap", range = btn_close_ic.dimen } },
-    }
-    btn_close_ic.onTapSelect = function() self.close(true); return true end
+    -- Footer: three buttons (Close | Edit | Apply) separated by thin vertical lines.
+    -- Edit is enabled only when a Personal preset is currently previewed (so the
+    -- overflow-menu actions have an unambiguous target).
+    local edit_enabled = self.previewing and self.previewing.kind == "local"
+    local edit_target = edit_enabled and self.previewing.filename
+    local btn_w = math.floor((width - 2 * Size.line.thick) / 3)
 
-    local apply_text = _("Apply")
-    if self.previewing and self.previewing.kind == "gallery" then
-        apply_text = _("Install")
+    local function make_footer_btn(label_text, active, on_tap, is_bold)
+        local label = TextWidget:new{
+            text = label_text,
+            face = Font:getFace("infofont", 16),
+            forced_height = row_height,
+            forced_baseline = baseline,
+            bold = is_bold and active,
+            fgcolor = active and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY,
+        }
+        local ic = InputContainer:new{
+            dimen = Geom:new{ w = btn_w, h = row_height },
+            CenterContainer:new{ dimen = Geom:new{ w = btn_w, h = row_height }, label },
+        }
+        ic.ges_events = { TapSelect = { GestureRange:new{ ges = "tap", range = ic.dimen } } }
+        ic.onTapSelect = function() if active then on_tap() end; return true end
+        return ic
     end
-    local btn_apply = TextWidget:new{
-        text = apply_text,
-        face = Font:getFace("infofont", 16),
-        forced_height = row_height,
-        forced_baseline = baseline,
-        bold = true,
-        fgcolor = self.previewing and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY,
-    }
-    local btn_apply_ic = InputContainer:new{
-        dimen = Geom:new{ w = math.floor((width - Size.line.thick) / 2), h = row_height },
-        CenterContainer:new{
-            dimen = Geom:new{ w = math.floor((width - Size.line.thick) / 2), h = row_height },
-            btn_apply,
-        },
-    }
-    btn_apply_ic.ges_events = {
-        TapSelect = { GestureRange:new{ ges = "tap", range = btn_apply_ic.dimen } },
-    }
-    btn_apply_ic.onTapSelect = function()
-        if self.previewing then self.applyCurrent() end
-        return true
-    end
+
+    local btn_close_ic = make_footer_btn(_("Close"), true,
+        function() self.close(true) end, true)
+    local btn_edit_ic = make_footer_btn(_("Edit…"), edit_enabled, function()
+        -- Open the same overflow actions that long-press triggers
+        if not edit_target then return end
+        local presets = self.bookends:readPresetFiles()
+        for _i, p in ipairs(presets) do
+            if p.filename == edit_target then
+                PresetManagerModal._openOverflow(self, p)
+                return
+            end
+        end
+    end, false)
+    local apply_text = (self.previewing and self.previewing.kind == "gallery")
+        and _("Install") or _("Apply")
+    local btn_apply_ic = make_footer_btn(apply_text, self.previewing ~= nil,
+        function() self.applyCurrent() end, true)
 
     table.insert(vg, LineWidget:new{
         background = Blitbuffer.COLOR_BLACK,
         dimen = Geom:new{ w = width, h = Size.line.thick },
     })
-    local btn_divider = LineWidget:new{
+    local vdiv = function() return LineWidget:new{
         background = Blitbuffer.COLOR_BLACK,
         dimen = Geom:new{ w = Size.line.thick, h = row_height },
-    }
-    table.insert(vg, HorizontalGroup:new{ btn_close_ic, btn_divider, btn_apply_ic })
+    } end
+    table.insert(vg, HorizontalGroup:new{ btn_close_ic, vdiv(), btn_edit_ic, vdiv(), btn_apply_ic })
 
     -- Outer frame + center
     local frame = FrameContainer:new{
@@ -372,9 +367,48 @@ function PresetManagerModal._rebuild(self)
 end
 
 function PresetManagerModal._renderLocalRows(self, vg, width, row_height, font_size, baseline, left_pad)
+    -- Small status + help block: shown above the plus-button row.
+    -- Tells the user what Close would restore to and what ★ means.
+    local active_fn_for_header = self.bookends:getActivePresetFilename()
+    local active_name_for_header = _("(No overlay)")
+    if active_fn_for_header then
+        local presets_lookup = self.bookends:readPresetFiles()
+        for _i, p in ipairs(presets_lookup) do
+            if p.filename == active_fn_for_header then
+                active_name_for_header = p.name
+                break
+            end
+        end
+    end
+    local status_text = T(_("Currently editing: %1"), active_name_for_header)
+    local help_text = _("Tap to preview · ★ marks presets in your cycle gesture")
+    table.insert(vg, LeftContainer:new{
+        dimen = Geom:new{ w = width, h = math.floor(row_height * 0.7) },
+        HorizontalGroup:new{
+            HorizontalSpan:new{ width = left_pad },
+            TextWidget:new{
+                text = status_text,
+                face = Font:getFace("cfont", 14),
+                bold = true,
+                fgcolor = Blitbuffer.COLOR_BLACK,
+            },
+        },
+    })
+    table.insert(vg, LeftContainer:new{
+        dimen = Geom:new{ w = width, h = math.floor(row_height * 0.6) },
+        HorizontalGroup:new{
+            HorizontalSpan:new{ width = left_pad },
+            TextWidget:new{
+                text = help_text,
+                face = Font:getFace("cfont", 11),
+                fgcolor = Blitbuffer.COLOR_DARK_GRAY,
+            },
+        },
+    })
+
     -- "+ Save current as new preset"
     local plus = TextWidget:new{
-        text = "+ " .. _("Save current as new preset"),
+        text = "+ " .. _("Save current overlay as new preset"),
         face = Font:getFace("infofont", 16),
         forced_height = row_height,
         forced_baseline = baseline,
@@ -407,20 +441,22 @@ function PresetManagerModal._renderLocalRows(self, vg, width, row_height, font_s
         star_key = "_empty",
         on_preview = function() self.previewBlank() end,
         is_selected = (selected_key == "_empty"),
+        is_virtual = true,
     })
 
     -- Real presets, paginated
     local presets = self.bookends:readPresetFiles()
-    local ROWS_PER_PAGE = 8
+    local ROWS_PER_PAGE = 5
     local total_pages = math.max(1, math.ceil(#presets / ROWS_PER_PAGE))
     if self.page > total_pages then self.page = total_pages end
     local start_idx = (self.page - 1) * ROWS_PER_PAGE + 1
     local end_idx = math.min(start_idx + ROWS_PER_PAGE - 1, #presets)
     for i = start_idx, end_idx do
         local p = presets[i]
-        local by = p.preset.author and (" — " .. p.preset.author) or ""
         PresetManagerModal._addRow(self, vg, width, row_height, font_size, baseline, left_pad, {
-            display = p.name .. by,
+            display = p.name,
+            description = p.preset.description,
+            author = p.preset.author,
             star_key = p.filename,
             on_preview = function() self.previewLocal(p) end,
             on_hold = function() PresetManagerModal._openOverflow(self, p) end,
@@ -475,48 +511,107 @@ function PresetManagerModal._renderLocalRows(self, vg, width, row_height, font_s
 end
 
 function PresetManagerModal._addRow(self, vg, width, row_height, font_size, baseline, left_pad, opts)
+    -- Card-style row: title, optional description + author underneath, star
+    -- column on the left. Selected row gets a thicker border.
+    -- `opts` fields: display (title), star_key, on_preview, on_hold, is_selected,
+    --                 description (optional), author (optional), is_virtual (optional)
     local starred = isStarred(self.bookends, opts.star_key)
+    local card_height = Screen:scaleBySize(66)
+    local star_width = Screen:scaleBySize(40)
+    local inner_pad = Screen:scaleBySize(8)
+    local card_outer_w = width - 2 * left_pad
+    local content_w = card_outer_w - star_width - 2 * inner_pad
+
+    -- Star — tappable sub-area that toggles cycle membership (doesn't preview).
     local star_widget = TextWidget:new{
         text = starred and "\xE2\x98\x85" or "\xE2\x98\x86",
-        face = Font:getFace("infofont", 18),
-        forced_height = row_height,
-        forced_baseline = baseline,
+        face = Font:getFace("infofont", 20),
         bold = true,
         fgcolor = Blitbuffer.COLOR_BLACK,
     }
-    local star_width = Screen:scaleBySize(40)
     local star_ic = InputContainer:new{
-        dimen = Geom:new{ w = star_width, h = row_height },
-        CenterContainer:new{ dimen = Geom:new{ w = star_width, h = row_height }, star_widget },
+        dimen = Geom:new{ w = star_width, h = card_height },
+        CenterContainer:new{ dimen = Geom:new{ w = star_width, h = card_height }, star_widget },
     }
     star_ic.ges_events = { TapSelect = { GestureRange:new{ ges = "tap", range = star_ic.dimen } } }
     local key = opts.star_key
     star_ic.onTapSelect = function() self.toggleStar(key); return true end
 
-    local name_widget = TextWidget:new{
-        text = (opts.is_selected and "\xE2\x96\xB8 " or "   ") .. opts.display,
-        face = Font:getFace("cfont", font_size),
-        forced_height = row_height,
-        forced_baseline = baseline,
-        max_width = width - 2 * left_pad - star_width,
+    -- Title
+    local title_widget = TextWidget:new{
+        text = opts.display,
+        face = Font:getFace("cfont", 18),
+        bold = opts.is_selected or false,
+        max_width = content_w,
         fgcolor = Blitbuffer.COLOR_BLACK,
-        bold = opts.is_selected,
     }
-    local name_ic = InputContainer:new{
-        dimen = Geom:new{ w = width - 2 * left_pad - star_width, h = row_height },
-        name_widget,
+
+    -- Secondary line: description + author in smaller, lighter text.
+    -- Virtual rows (No overlay / Save button) skip this line.
+    local secondary_widget
+    if not opts.is_virtual and (opts.description or opts.author) then
+        local secondary_text = opts.description or ""
+        if opts.author and opts.author ~= "" then
+            if secondary_text ~= "" then
+                secondary_text = secondary_text .. "   \xE2\x80\x94 " .. opts.author
+            else
+                secondary_text = opts.author
+            end
+        end
+        if secondary_text ~= "" then
+            secondary_widget = TextWidget:new{
+                text = secondary_text,
+                face = Font:getFace("cfont", 12),
+                max_width = content_w,
+                fgcolor = Blitbuffer.COLOR_DARK_GRAY,
+            }
+        end
+    end
+
+    local content_group = VerticalGroup:new{ align = "left", title_widget }
+    if secondary_widget then
+        table.insert(content_group, secondary_widget)
+    end
+
+    -- Frame: thick border + white background when selected; thin border
+    -- otherwise. No inverted colors — keeps readability high on e-ink.
+    local frame = FrameContainer:new{
+        bordersize = opts.is_selected and Size.border.thick or Size.border.thin,
+        radius = Size.radius.default,
+        padding = 0,
+        padding_left = inner_pad,
+        padding_right = inner_pad,
+        padding_top = math.floor(Size.padding.small / 2),
+        padding_bottom = math.floor(Size.padding.small / 2),
+        margin = 0,
+        background = Blitbuffer.COLOR_WHITE,
+        HorizontalGroup:new{
+            align = "center",
+            star_ic,
+            content_group,
+        },
     }
-    name_ic.ges_events = { TapSelect = { GestureRange:new{ ges = "tap", range = name_ic.dimen } } }
-    name_ic.onTapSelect = function() opts.on_preview(); return true end
+
+    -- Capture taps/holds on the whole card (minus the star sub-area which
+    -- has its own handler). InputContainer wraps the frame.
+    local card = InputContainer:new{
+        dimen = Geom:new{ w = frame:getSize().w, h = frame:getSize().h },
+        frame,
+    }
+    card.ges_events = { TapSelect = { GestureRange:new{ ges = "tap", range = card.dimen } } }
+    card.onTapSelect = function() opts.on_preview(); return true end
     if opts.on_hold then
-        name_ic.ges_events.HoldSelect = { GestureRange:new{ ges = "hold", range = name_ic.dimen } }
-        name_ic.onHoldSelect = function() opts.on_hold(); return true end
+        card.ges_events.HoldSelect = { GestureRange:new{ ges = "hold", range = card.dimen } }
+        card.onHoldSelect = function() opts.on_hold(); return true end
     end
 
     table.insert(vg, HorizontalGroup:new{
         HorizontalSpan:new{ width = left_pad },
-        star_ic,
-        name_ic,
+        card,
+    })
+    -- Small gap between cards
+    table.insert(vg, VerticalGroup:new{
+        HorizontalGroup:new{ HorizontalSpan:new{ width = 1 } },
     })
 end
 
