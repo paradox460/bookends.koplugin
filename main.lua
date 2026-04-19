@@ -166,22 +166,27 @@ end
 
 function Bookends:onDispatcherRegisterActions()
     local Dispatcher = require("dispatcher")
+    -- Titles all begin with "Bookends:" so the four actions read as a single
+    -- block in KOReader's Gesture Manager. Registration order controls the
+    -- picker's display order (see Dispatcher.dispatcher_menu_order) so they
+    -- appear consecutively. Separator on the last item closes the group.
+    -- IDs are kept stable — renaming IDs would break existing bindings.
     Dispatcher:registerAction("toggle_bookends", {
         category = "none",
         event = "ToggleBookends",
-        title = _("Toggle bookends"),
+        title = _("Bookends: toggle visibility"),
         reader = true,
     })
     Dispatcher:registerAction("cycle_bookends_preset", {
         category = "none",
         event = "CycleBookendsPreset",
-        title = _("Cycle bookends preset"),
+        title = _("Bookends: cycle preset"),
         reader = true,
     })
     Dispatcher:registerAction("set_bookends", {
         category = "string",
         event = "SetBookends",
-        title = _("Set bookends"),
+        title = _("Bookends: set visibility"),
         reader = true,
         args = {true, false},
         toggle = {_("on"), _("off")},
@@ -189,8 +194,9 @@ function Bookends:onDispatcherRegisterActions()
     Dispatcher:registerAction("bookends_open_manager", {
         category = "none",
         event = "OpenPresetManager",
-        title = _("Open preset library"),
+        title = _("Bookends: open preset library"),
         reader = true,
+        separator = true,
     })
 end
 
