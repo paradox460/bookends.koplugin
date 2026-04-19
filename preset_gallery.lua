@@ -181,9 +181,41 @@ function Gallery.fetchIndex(user_agent, callback)
     callback(data, nil)
 end
 
+local function presetCachePath(slug)
+    -- Sanitise slug just in case an index entry sneaks unexpected characters.
+    local safe = tostring(slug):gsub("[^%w%-_]", "_")
+    return cacheDir() .. "/preset_" .. safe .. ".lua"
+end
+
+local function loadPresetBody(body)
+    local fn, err = loadstring(body)
+    if not fn then return nil, "parse error: " .. tostring(err) end
+    setfenv(fn, {})
+    local ok, preset = pcall(fn)
+    if not ok or type(preset) ~= "table" then
+        return nil, "runtime error"
+    end
+    return preset
+end
+
+--- Return a previously-downloaded preset without hitting the network.
+-- Checks the in-memory cache first, then the on-disk body cache.
+function Gallery.getCachedPreset(slug)
+    if _preset_cache[slug] then return _preset_cache[slug] end
+    local f = io.open(presetCachePath(slug), "r")
+    if not f then return nil end
+    local body = f:read("*a"); f:close()
+    if not body or body == "" then return nil end
+    local preset = loadPresetBody(body)
+    if preset then _preset_cache[slug] = preset end
+    return preset
+end
+
 function Gallery.downloadPreset(slug, preset_url, user_agent, callback)
-    if _preset_cache[slug] then
-        callback(_preset_cache[slug], nil)
+    -- 1. In-memory / on-disk cache first. Works whether online or not.
+    local cached = Gallery.getCachedPreset(slug)
+    if cached then
+        callback(cached, nil)
         return
     end
     if not Gallery.isOnline() then
@@ -192,15 +224,11 @@ function Gallery.downloadPreset(slug, preset_url, user_agent, callback)
     end
     local body = httpGet(BASE_URL .. preset_url, user_agent or "KOReader-Bookends")
     if not body then callback(nil, "fetch failed"); return end
-    -- Sandboxed load to evaluate the Lua preset
-    local fn, err = loadstring(body)
-    if not fn then callback(nil, "parse error: " .. tostring(err)); return end
-    setfenv(fn, {})
-    local ok, preset = pcall(fn)
-    if not ok or type(preset) ~= "table" then
-        callback(nil, "runtime error")
-        return
-    end
+    -- Persist the raw body so future sessions can load it offline.
+    local cf = io.open(presetCachePath(slug), "w")
+    if cf then cf:write(body); cf:close() end
+    local preset, err = loadPresetBody(body)
+    if not preset then callback(nil, err); return end
     _preset_cache[slug] = preset
     callback(preset, nil)
 end

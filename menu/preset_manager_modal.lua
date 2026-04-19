@@ -1000,6 +1000,9 @@ function PresetManagerModal._delete(self, entry)
 end
 
 function PresetManagerModal._renderGalleryRows(self, vg, width, row_height, font_size, baseline, left_pad)
+    local Gallery = require("preset_gallery")
+    local online = Gallery.isOnline()
+
     if self.gallery_loading and not self.gallery_index then
         table.insert(vg, LeftContainer:new{
             dimen = Geom:new{ w = width, h = row_height },
@@ -1039,6 +1042,36 @@ function PresetManagerModal._renderGalleryRows(self, vg, width, row_height, font
 
     -- Top gap so cards don't butt against the header separator
     table.insert(vg, VerticalSpan:new{ width = Screen:scaleBySize(8) })
+
+    -- Offline banner: appears above the cached cards so the state is obvious.
+    -- Tapping an uncached preset will show a clearer offline notification, but
+    -- the banner lets the user know before they try.
+    if not online then
+        local banner_h = Screen:scaleBySize(36)
+        local banner_frame = FrameContainer:new{
+            bordersize = Size.border.thin,
+            radius = Size.radius.default,
+            padding = 0,
+            padding_left = Screen:scaleBySize(12),
+            padding_right = Screen:scaleBySize(12),
+            margin = 0,
+            background = Blitbuffer.COLOR_LIGHT_GRAY or Blitbuffer.gray(0.92),
+            LeftContainer:new{
+                dimen = Geom:new{ w = width - 2 * left_pad - 2 * Size.border.thin, h = banner_h },
+                TextWidget:new{
+                    text = _("Offline — only already-downloaded presets will load."),
+                    face = Font:getFace("cfont", 13),
+                    max_width = width - 2 * left_pad - Screen:scaleBySize(24),
+                    fgcolor = Blitbuffer.COLOR_BLACK,
+                },
+            },
+        }
+        table.insert(vg, HorizontalGroup:new{
+            HorizontalSpan:new{ width = left_pad },
+            banner_frame,
+        })
+        table.insert(vg, VerticalSpan:new{ width = Screen:scaleBySize(8) })
+    end
 
     local ROWS_PER_PAGE = 5
     local entries = self.gallery_index.presets
@@ -1100,7 +1133,11 @@ function PresetManagerModal._previewGallery(self, entry)
         "KOReader-Bookends",
         function(data, err)
             if not data then
-                Notification:notify(T(_("Couldn't download '%1'."), entry.name))
+                if err == "offline" then
+                    Notification:notify(T(_("Offline — '%1' hasn't been downloaded yet."), entry.name))
+                else
+                    Notification:notify(T(_("Couldn't download '%1'."), entry.name))
+                end
                 return
             end
             local clean = self.bookends.validatePreset(data)
