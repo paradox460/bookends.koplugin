@@ -1153,8 +1153,18 @@ function PresetManagerModal._renderGalleryRows(self, vg, width, row_height, font
     local local_names = {}
     for _i, p in ipairs(self.bookends:readPresetFiles()) do local_names[p.name] = true end
 
+    -- Sort recent-first by `added` (ISO date, lexicographic compare works).
+    -- Name is the tiebreaker for same-day additions. Copy the list before
+    -- sorting so the cached index object keeps its original order for future
+    -- sort options (added/name/installed/etc.) that we might add later.
     local ROWS_PER_PAGE = 5
-    local entries = self.gallery_index.presets
+    local entries = {}
+    for _i, e in ipairs(self.gallery_index.presets) do entries[#entries + 1] = e end
+    table.sort(entries, function(a, b)
+        local da, db = a.added or "", b.added or ""
+        if da ~= db then return da > db end
+        return (a.name or "") < (b.name or "")
+    end)
     local total_pages = math.max(1, math.ceil(#entries / ROWS_PER_PAGE))
     if self.page > total_pages then self.page = total_pages end
     local start_idx = (self.page - 1) * ROWS_PER_PAGE + 1
