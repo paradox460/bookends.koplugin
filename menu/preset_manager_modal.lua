@@ -21,6 +21,7 @@ local LeftContainer = require("ui/widget/container/leftcontainer")
 local LineWidget = require("ui/widget/linewidget")
 local Notification = require("ui/widget/notification")
 local Size = require("ui/size")
+local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -141,7 +142,11 @@ function PresetManagerModal._previewLocal(self, entry)
 end
 
 function PresetManagerModal._applyCurrent(self)
-    if not self.previewing then return end
+    if not self.previewing then
+        -- Nothing previewed — Apply is a no-op, just close the modal.
+        self.close()
+        return
+    end
     if self.previewing.kind == "local" then
         self.bookends:setActivePresetFilename(self.previewing.filename)
     elseif self.previewing.kind == "gallery" then
@@ -322,7 +327,7 @@ function PresetManagerModal._rebuild(self)
 
     local btn_close_ic = make_footer_btn(_("Close"), true,
         function() self.close(true) end, true)
-    local btn_edit_ic = make_footer_btn(_("Edit…"), edit_enabled, function()
+    local btn_edit_ic = make_footer_btn(_("Manage…"), edit_enabled, function()
         -- Open the same overflow actions that long-press triggers
         if not edit_target then return end
         local presets = self.bookends:readPresetFiles()
@@ -335,7 +340,11 @@ function PresetManagerModal._rebuild(self)
     end, false)
     local apply_text = (self.previewing and self.previewing.kind == "gallery")
         and _("Install") or _("Apply")
-    local btn_apply_ic = make_footer_btn(apply_text, self.previewing ~= nil,
+    -- Apply is always tappable. If there's nothing previewed it just closes
+    -- the modal (same end state as reopening it). This is less surprising
+    -- than toggling the button's enablement after a tap on the already-
+    -- active preset.
+    local btn_apply_ic = make_footer_btn(apply_text, true,
         function() self.applyCurrent() end, true)
 
     -- Thin dark-grey separator above the footer, matching the font picker's
@@ -1101,14 +1110,56 @@ function PresetManagerModal._renderGalleryRows(self, vg, width, row_height, font
     })
     table.insert(vg, VerticalSpan:new{ width = Screen:scaleBySize(8) })
 
-    -- Empty state: pad the body so the modal's height stays consistent with
-    -- a populated list (5 card slots + the pagination area that appears when
-    -- the gallery has more than 5 entries). The status strip above already
-    -- explains what to do.
+    -- Empty state: render an explanatory help panel in the space a populated
+    -- list would occupy. Total height matches the populated layout (5 card
+    -- slots + pagination area) so the modal doesn't resize on Refresh.
     if not self.gallery_index or not self.gallery_index.presets then
         local card_slot_h = Screen:scaleBySize(64) + Screen:scaleBySize(8)
         local pagination_area_h = 2 * Size.span.vertical_default + Size.line.thin + row_height
-        table.insert(vg, VerticalSpan:new{ width = card_slot_h * 5 + pagination_area_h })
+        local help_h = card_slot_h * 5
+        local text_width = width - 4 * left_pad
+        local body_fg = Blitbuffer.COLOR_DARK_GRAY
+        local title_widget = TextWidget:new{
+            text = _("Discover more presets"),
+            face = Font:getFace("cfont", 18),
+            bold = true,
+            fgcolor = Blitbuffer.COLOR_BLACK,
+        }
+        local intro = TextBoxWidget:new{
+            text = _("Browse presets others have shared, preview them on your own status bar, and install the ones you like. Once installed, you can edit each preset freely on the Local tab."),
+            face = Font:getFace("cfont", 14),
+            width = text_width,
+            alignment = "center",
+            fgcolor = body_fg,
+        }
+        local share = TextBoxWidget:new{
+            text = _("Made something worth sharing? Submit it with the Manage button while viewing one of your own presets."),
+            face = Font:getFace("cfont", 14),
+            width = text_width,
+            alignment = "center",
+            fgcolor = body_fg,
+        }
+        local cta = TextWidget:new{
+            text = _("Tap Refresh above to load the gallery."),
+            face = Font:getFace("cfont", 14),
+            bold = true,
+            fgcolor = Blitbuffer.COLOR_BLACK,
+        }
+        local help_group = VerticalGroup:new{
+            align = "center",
+            title_widget,
+            VerticalSpan:new{ width = Screen:scaleBySize(14) },
+            intro,
+            VerticalSpan:new{ width = Screen:scaleBySize(12) },
+            share,
+            VerticalSpan:new{ width = Screen:scaleBySize(18) },
+            cta,
+        }
+        table.insert(vg, CenterContainer:new{
+            dimen = Geom:new{ w = width, h = help_h },
+            help_group,
+        })
+        table.insert(vg, VerticalSpan:new{ width = pagination_area_h })
         return
     end
 
