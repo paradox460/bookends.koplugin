@@ -232,8 +232,10 @@ OverlayWidget.BAR_PLACEHOLDER = BAR_PLACEHOLDER
 -- @return widget, width, height
 local function buildBarLine(text, cfg, available_w, max_width)
     local bar_info = cfg.bar
-    -- Default bar height matches the line's font size
-    local bar_h = cfg.bar_height or (cfg.face and cfg.face.size) or 5
+    -- Height precedence: inline %bar{v…} overrides the line's bar_height setting,
+    -- which in turn overrides the line-font-size default.
+    local bar_h = (bar_info and bar_info.height)
+        or cfg.bar_height or (cfg.face and cfg.face.size) or 5
     local bar_style = cfg.bar_style or "bordered"
     local effective_w = max_width or available_w
 
@@ -737,7 +739,8 @@ function OverlayWidget.buildStyledLine(segments, cfg, available_w, max_width)
     -- Handle bar segment if present
     if bar_slot and cfg.bar then
         local bar_info = cfg.bar
-        local bar_h = cfg.bar_height or (cfg.face and cfg.face.size) or 5
+        local bar_h = (bar_info and bar_info.height)
+            or cfg.bar_height or (cfg.face and cfg.face.size) or 5
         local bar_style = cfg.bar_style or "bordered"
         local bar_manual_w = (bar_info and bar_info.width) or 0
 
