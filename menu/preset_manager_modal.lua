@@ -570,6 +570,10 @@ function PresetManagerModal._openOverflow(self, preset_entry)
                 UIManager:close(dlg)
                 PresetManagerModal._editDescription(self, entry)
             end }},
+            {{ text = _("Edit author…"), callback = function()
+                UIManager:close(dlg)
+                PresetManagerModal._editAuthor(self, entry)
+            end }},
             {{ text = _("Duplicate"), callback = function()
                 UIManager:close(dlg)
                 PresetManagerModal._duplicate(self, entry)
@@ -620,30 +624,40 @@ function PresetManagerModal._rename(self, entry)
     dlg:onShowKeyboard()
 end
 
-function PresetManagerModal._editDescription(self, entry)
-    local current = (entry.preset and entry.preset.description) or ""
+--- Shared helper: edit a single metadata string field (description, author) in place.
+local function editMetadataField(self, entry, field_key, dialog_title, on_done)
+    local current = (entry.preset and entry.preset[field_key]) or ""
     local dlg
     dlg = InputDialog:new{
-        title = _("Edit description"),
+        title = dialog_title,
         input = current,
         buttons = {{
             { text = _("Cancel"), id = "close", callback = function() UIManager:close(dlg) end },
             { text = _("Save"), is_enter_default = true, callback = function()
-                local new_desc = dlg:getInputText() or ""
+                local new_val = dlg:getInputText() or ""
                 local path = self.bookends:presetDir() .. "/" .. entry.filename
                 local data = self.bookends.loadPresetFile(path)
                 if data then
-                    data.description = new_desc ~= "" and new_desc or nil
-                    -- Overwrite in place (writePresetFile would rename on collision)
+                    data[field_key] = new_val ~= "" and new_val or nil
                     self.bookends:updatePresetFile(entry.filename, data.name or entry.name, data)
+                    -- Refresh in-memory entry.preset so subsequent checks see the new value
+                    entry.preset = data
                 end
                 UIManager:close(dlg)
-                self.rebuild()
+                if on_done then on_done(new_val) else self.rebuild() end
             end },
         }},
     }
     UIManager:show(dlg)
     dlg:onShowKeyboard()
+end
+
+function PresetManagerModal._editDescription(self, entry)
+    editMetadataField(self, entry, "description", _("Edit description"))
+end
+
+function PresetManagerModal._editAuthor(self, entry)
+    editMetadataField(self, entry, "author", _("Edit author"))
 end
 
 function PresetManagerModal._duplicate(self, entry)
@@ -686,18 +700,18 @@ local function serializePresetForSubmission(preset_entry)
 end
 
 function PresetManagerModal._submitToGallery(self, entry)
+    -- If any required metadata is missing, prompt inline, save it, and continue.
     local data = entry.preset
-    local missing = {}
-    if not data.description or data.description == "" then table.insert(missing, _("description")) end
-    if not data.author or data.author == "" then table.insert(missing, _("author")) end
-    if #missing > 0 then
-        UIManager:show(ConfirmBox:new{
-            text = T(_("This preset is missing %1 — add via Edit description / the preset file before submitting."),
-                     table.concat(missing, ", ")),
-            ok_text = _("OK"),
-            cancel_text = _("Cancel"),
-            ok_callback = function() end,
-        })
+    local function needsField(f) return not data[f] or data[f] == "" end
+
+    if needsField("author") then
+        editMetadataField(self, entry, "author", _("Who should we credit as the author?"),
+            function() PresetManagerModal._submitToGallery(self, entry) end)
+        return
+    end
+    if needsField("description") then
+        editMetadataField(self, entry, "description", _("One-line description of this preset"),
+            function() PresetManagerModal._submitToGallery(self, entry) end)
         return
     end
 
