@@ -160,7 +160,10 @@ function Gallery.fetchIndex(user_agent, callback)
         callback(nil, "offline")
         return
     end
-    local body = httpGet(INDEX_URL, user_agent or "KOReader-Bookends")
+    -- Cache-bust GitHub's CDN (Cache-Control: max-age=300 on raw.githubusercontent.com).
+    -- Without this, a user who just deleted a preset may still see it for ~5 minutes.
+    local url = INDEX_URL .. "?ts=" .. tostring(os.time())
+    local body = httpGet(url, user_agent or "KOReader-Bookends")
     if not body then
         callback(nil, "fetch failed")
         return
