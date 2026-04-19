@@ -8,6 +8,10 @@ local Gallery = {}
 local INDEX_URL = "https://raw.githubusercontent.com/AndyHazz/bookends-presets/main/index.json"
 local BASE_URL  = "https://raw.githubusercontent.com/AndyHazz/bookends-presets/main/"
 local SUBMIT_URL = "https://bookends-submit.andy-nmc.workers.dev/submit"
+-- GitHub Pulls API — returns open PRs on the presets repo. 100/page is the
+-- max without pagination; the gallery's approval queue is never close to
+-- that in practice so we trust the first page as the total.
+local PRS_URL = "https://api.github.com/repos/AndyHazz/bookends-presets/pulls?state=open&per_page=100"
 
 local function httpGet(url, user_agent)
     local ok_require, http, ltn12, socket, socketutil = pcall(function()
@@ -140,6 +144,31 @@ function Gallery.fetchIndex(user_agent, callback)
         return
     end
     callback(data, nil)
+end
+
+--- Count open PRs (preset submissions awaiting review) on the presets repo.
+-- Only called as a secondary fetch after a user-initiated Refresh — never
+-- on its own. Unauthenticated GitHub API is rate-limited to 60/hr per IP,
+-- plenty for a refresh-gated call.
+function Gallery.fetchApprovalQueueCount(user_agent, callback)
+    if not Gallery.isOnline() then
+        callback(nil, "offline")
+        return
+    end
+    local url = PRS_URL .. "&ts=" .. tostring(os.time())
+    local body = httpGet(url, user_agent or "KOReader-Bookends")
+    if not body then
+        callback(nil, "fetch failed")
+        return
+    end
+    local ok_req, json = pcall(require, "json")
+    if not ok_req then callback(nil, "json module missing"); return end
+    local ok, data = pcall(json.decode, body)
+    if not ok or type(data) ~= "table" then
+        callback(nil, "invalid response")
+        return
+    end
+    callback(#data, nil)
 end
 
 function Gallery.downloadPreset(slug, preset_url, user_agent, callback)

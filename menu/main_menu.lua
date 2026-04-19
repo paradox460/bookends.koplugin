@@ -234,6 +234,8 @@ function Bookends:buildBookendsSettingsMenu()
                     return label .. " (" .. _("toggle bookends") .. ")"
                 elseif action == "cycle" then
                     return label .. " (" .. _("cycle presets") .. ")"
+                elseif action == "library" then
+                    return label .. " (" .. _("preset library") .. ")"
                 end
                 return label
             end,
@@ -271,6 +273,20 @@ function Bookends:buildBookendsSettingsMenu()
                                 setTapAction(nil)
                             else
                                 setTapAction("cycle")
+                            end
+                        end,
+                        radio = true,
+                    },
+                    {
+                        text = _("Open preset library"),
+                        checked_func = function()
+                            return self.settings:readSetting("bottom_center_tap_action") == "library"
+                        end,
+                        callback = function()
+                            if self.settings:readSetting("bottom_center_tap_action") == "library" then
+                                setTapAction(nil)
+                            else
+                                setTapAction("library")
                             end
                         end,
                         radio = true,

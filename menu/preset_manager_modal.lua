@@ -87,16 +87,24 @@ function PresetManagerModal.show(bookends)
         local Gallery = require("preset_gallery")
         self.gallery_loading = true
         self.gallery_error = nil
+        self.approval_queue_count = nil
         self.rebuild()
         Gallery.fetchIndex("KOReader-Bookends", function(idx, err)
-            self.gallery_loading = false
-            if idx then
-                self.gallery_index = idx
-                self.gallery_error = nil
-            else
+            if not idx then
+                self.gallery_loading = false
                 self.gallery_error = err
+                self.rebuild()
+                return
             end
-            self.rebuild()
+            self.gallery_index = idx
+            self.gallery_error = nil
+            -- Secondary fetch: open PRs on the presets repo. Non-fatal —
+            -- failure just means we don't display the count.
+            Gallery.fetchApprovalQueueCount("KOReader-Bookends", function(count)
+                self.gallery_loading = false
+                if count then self.approval_queue_count = count end
+                self.rebuild()
+            end)
         end)
     end
     self.setTab = function(tab)
@@ -1067,9 +1075,17 @@ function PresetManagerModal._renderGalleryRows(self, vg, width, row_height, font
         status_text = _("Offline — connect to refresh")
     elseif self.gallery_error then
         status_text = _("Refresh failed — tap Refresh to retry")
+    elseif self.approval_queue_count and self.approval_queue_count > 0 then
+        -- Approval queue = open PRs on the presets repo. Shown only when
+        -- a refresh has successfully populated both the index and the count.
+        if self.approval_queue_count == 1 then
+            status_text = _("1 preset in the approval queue")
+        else
+            status_text = T(_("%1 presets in the approval queue"), self.approval_queue_count)
+        end
     else
-        -- When loaded, and when idle-empty (the help panel already explains
-        -- what to do), leave the status field blank.
+        -- When loaded with no pending PRs, and when idle-empty (the help
+        -- panel already explains what to do), leave the status blank.
         status_text = ""
     end
 

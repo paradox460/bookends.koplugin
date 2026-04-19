@@ -281,6 +281,9 @@ function Bookends:setupTouchZones()
                 elseif action == "cycle" then
                     self:onCycleBookendsPreset()
                     return true
+                elseif action == "library" then
+                    self:onOpenPresetManager()
+                    return true
                 end
                 -- Block the stock footer from re-appearing when we've disabled it
                 if self.stock_bar_disabled then
