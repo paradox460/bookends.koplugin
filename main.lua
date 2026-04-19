@@ -1623,13 +1623,14 @@ function Bookends:showFontPicker(current_face, on_select, default_face)
         -- Page 1: prepend "Font-family fonts" header + family rows + "Fonts" header
         if page == 1 and #family_entries > 0 then
             local baseline = math.floor(row_height * 0.65)
-            -- Family section header
+            -- Family section header (rendered in dark-grey so it reads as a
+            -- passive label rather than a tappable row).
             local family_header = TextWidget:new{
                 text = "\xE2\x94\x80\xE2\x94\x80 " .. _("Font-family fonts") .. " \xE2\x94\x80\xE2\x94\x80",
                 face = Font:getFace("cfont", font_size),
                 forced_height = row_height,
                 forced_baseline = baseline,
-                fgcolor = Blitbuffer.COLOR_BLACK,
+                fgcolor = Blitbuffer.COLOR_DARK_GRAY,
             }
             table.insert(list_group, LeftContainer:new{
                 dimen = Geom:new{ w = width, h = row_height },
@@ -1687,13 +1688,14 @@ function Bookends:showFontPicker(current_face, on_select, default_face)
                 table.insert(list_group, item_container)
             end
 
-            -- "Fonts" section header (separates family block from specific fonts)
+            -- "Fonts" section header (separates family block from specific fonts).
+            -- Dark-grey to match the family header and read as a passive label.
             local fonts_header = TextWidget:new{
                 text = "\xE2\x94\x80\xE2\x94\x80 " .. _("Fonts") .. " \xE2\x94\x80\xE2\x94\x80",
                 face = Font:getFace("cfont", font_size),
                 forced_height = row_height,
                 forced_baseline = baseline,
-                fgcolor = Blitbuffer.COLOR_BLACK,
+                fgcolor = Blitbuffer.COLOR_DARK_GRAY,
             }
             table.insert(list_group, LeftContainer:new{
                 dimen = Geom:new{ w = width, h = row_height },
