@@ -119,6 +119,11 @@ function PresetManagerModal._close(self, restore)
 end
 
 function PresetManagerModal._previewLocal(self, entry)
+    -- Commit any pending tweaks on the currently-active preset BEFORE loading
+    -- this one. Without this, menu tweaks that haven't triggered a settings
+    -- flush yet get wiped when loadPreset mutates the live state.
+    pcall(self.bookends.autosaveActivePreset, self.bookends)
+
     self.bookends._previewing = true
     local ok = pcall(self.bookends.loadPreset, self.bookends, entry.preset)
     if not ok then
@@ -132,6 +137,8 @@ function PresetManagerModal._previewLocal(self, entry)
 end
 
 function PresetManagerModal._previewBlank(self)
+    -- Same reason as _previewLocal — flush tweaks before overwriting live state.
+    pcall(self.bookends.autosaveActivePreset, self.bookends)
     self.bookends._previewing = true
     for _, pos in pairs(self.bookends.positions) do pos.lines = {} end
     -- Also disable any progress bars so the overlay really is blank.
@@ -1102,6 +1109,8 @@ function PresetManagerModal._previewGallery(self, entry)
                 require("logger").warn("bookends gallery: invalid preset", entry.slug)
                 return
             end
+            -- Flush pending tweaks on the currently-active preset first.
+            pcall(self.bookends.autosaveActivePreset, self.bookends)
             self.bookends._previewing = true
             local ok = pcall(self.bookends.loadPreset, self.bookends, clean)
             if not ok then
