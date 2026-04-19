@@ -300,7 +300,7 @@ function PresetManagerModal._rebuild(self)
         edit_target = self.bookends:getActivePresetFilename()
     end
     local edit_enabled = edit_target ~= nil
-    local btn_w = math.floor((width - 2 * Size.line.thick) / 3)
+    local btn_w = math.floor((width - 2 * Size.line.thin) / 3)
 
     local function make_footer_btn(label_text, active, on_tap, is_bold)
         local label = TextWidget:new{
@@ -338,13 +338,22 @@ function PresetManagerModal._rebuild(self)
     local btn_apply_ic = make_footer_btn(apply_text, self.previewing ~= nil,
         function() self.applyCurrent() end, true)
 
+    -- Thin dark-grey separator above the footer, matching the font picker's
+    -- treatment. Lighter than the title bar's thick black line so the title
+    -- remains the strongest visual divide.
     table.insert(vg, LineWidget:new{
-        background = Blitbuffer.COLOR_BLACK,
-        dimen = Geom:new{ w = width, h = Size.line.thick },
+        background = Blitbuffer.COLOR_DARK_GRAY,
+        dimen = Geom:new{ w = width, h = Size.line.thin },
     })
-    local vdiv = function() return LineWidget:new{
-        background = Blitbuffer.COLOR_BLACK,
-        dimen = Geom:new{ w = Size.line.thick, h = row_height },
+    -- Vertical button dividers: lighter and inset top/bottom so they don't
+    -- run the full button height (also matching the font picker's ButtonTable).
+    local vdiv_inset = Screen:scaleBySize(10)
+    local vdiv = function() return CenterContainer:new{
+        dimen = Geom:new{ w = Size.line.thin, h = row_height },
+        LineWidget:new{
+            background = Blitbuffer.COLOR_DARK_GRAY,
+            dimen = Geom:new{ w = Size.line.thin, h = row_height - 2 * vdiv_inset },
+        },
     } end
     table.insert(vg, HorizontalGroup:new{ btn_close_ic, vdiv(), btn_edit_ic, vdiv(), btn_apply_ic })
 
@@ -434,7 +443,8 @@ function PresetManagerModal._renderLocalRows(self, vg, width, row_height, font_s
         table.insert(vg, VerticalSpan:new{ width = card_slot_h })
     end
 
-    -- Pagination nav (matching font picker style)
+    -- Pagination nav (matching font picker style: thin dark-grey hairline
+    -- above, with a bit of breathing room on either side).
     if total_pages > 1 then
         local page_cur = self.page
         local page_nav = HorizontalGroup:new{
@@ -459,6 +469,15 @@ function PresetManagerModal._renderLocalRows(self, vg, width, row_height, font_s
                 callback = function() self.setPage(total_pages) end,
                 bordersize = 0, enabled = page_cur < total_pages, show_parent = self.modal_widget },
         }
+        table.insert(vg, VerticalSpan:new{ width = Size.span.vertical_default })
+        table.insert(vg, CenterContainer:new{
+            dimen = Geom:new{ w = width, h = Size.line.thin },
+            LineWidget:new{
+                background = Blitbuffer.COLOR_DARK_GRAY,
+                dimen = Geom:new{ w = width - 2 * Size.padding.default, h = Size.line.thin },
+            },
+        })
+        table.insert(vg, VerticalSpan:new{ width = Size.span.vertical_default })
         table.insert(vg, CenterContainer:new{
             dimen = Geom:new{ w = width, h = row_height },
             page_nav,
@@ -1148,6 +1167,15 @@ function PresetManagerModal._renderGalleryRows(self, vg, width, row_height, font
                 callback = function() self.setPage(total_pages) end,
                 bordersize = 0, enabled = page_cur < total_pages, show_parent = self.modal_widget },
         }
+        table.insert(vg, VerticalSpan:new{ width = Size.span.vertical_default })
+        table.insert(vg, CenterContainer:new{
+            dimen = Geom:new{ w = width, h = Size.line.thin },
+            LineWidget:new{
+                background = Blitbuffer.COLOR_DARK_GRAY,
+                dimen = Geom:new{ w = width - 2 * Size.padding.default, h = Size.line.thin },
+            },
+        })
+        table.insert(vg, VerticalSpan:new{ width = Size.span.vertical_default })
         table.insert(vg, CenterContainer:new{
             dimen = Geom:new{ w = width, h = row_height },
             page_nav,
