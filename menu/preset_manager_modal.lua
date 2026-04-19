@@ -1035,13 +1035,9 @@ function PresetManagerModal._renderGalleryRows(self, vg, width, row_height, font
     -- Top gap so the control strip doesn't butt against the title separator
     table.insert(vg, VerticalSpan:new{ width = Screen:scaleBySize(8) })
 
-    -- Control strip: status text on the left (loading / last-updated /
-    -- offline) and a Refresh button on the right. Refresh is the ONLY code
-    -- path that triggers a remote request — we never fetch on tab open.
-    local strip_pad = Screen:scaleBySize(12)
-    local strip_outer_w = width - 2 * left_pad
-    local strip_h = Screen:scaleBySize(36)
-
+    -- Control strip: a small card-styled Refresh button on the left, then
+    -- status text (last-updated / loading / offline). Refresh is the ONLY
+    -- code path that triggers a remote request — we never fetch on tab open.
     local status_text
     if self.gallery_loading then
         status_text = _("Refreshing…")
@@ -1067,28 +1063,62 @@ function PresetManagerModal._renderGalleryRows(self, vg, width, row_height, font
         end
     end
 
-    local refresh_btn = Button:new{
+    -- Card-style Refresh pill. Matches the preset cards (thin border, default
+    -- rounded corners, white background, darker text when disabled) but scaled
+    -- down to sit inline above the list.
+    local btn_enabled = online and not self.gallery_loading
+    local btn_pad_h = Screen:scaleBySize(12)
+    local btn_pad_v = Screen:scaleBySize(6)
+    local btn_label = TextWidget:new{
         text = _("Refresh"),
-        callback = function() self.refreshGallery() end,
-        enabled = online and not self.gallery_loading,
-        show_parent = self.modal_widget,
-        text_font_size = 14,
+        face = Font:getFace("cfont", 14),
+        bold = true,
+        fgcolor = btn_enabled and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY,
     }
-    local btn_w = refresh_btn:getSize().w
-    local status_w = strip_outer_w - btn_w - strip_pad
+    local btn_frame = FrameContainer:new{
+        bordersize = Size.border.thin,
+        radius = Size.radius.default,
+        padding = 0,
+        padding_left = btn_pad_h,
+        padding_right = btn_pad_h,
+        padding_top = btn_pad_v,
+        padding_bottom = btn_pad_v,
+        margin = 0,
+        background = Blitbuffer.COLOR_WHITE,
+        btn_label,
+    }
+    local btn_size = btn_frame:getSize()
+    local btn_widget
+    if btn_enabled then
+        local ic = InputContainer:new{
+            dimen = Geom:new{ w = btn_size.w, h = btn_size.h },
+            btn_frame,
+        }
+        ic.ges_events = { TapSelect = { GestureRange:new{ ges = "tap", range = ic.dimen } } }
+        ic.onTapSelect = function() self.refreshGallery(); return true end
+        btn_widget = ic
+    else
+        btn_widget = btn_frame
+    end
+
+    local strip_gap = Screen:scaleBySize(12)
+    local strip_outer_w = width - 2 * left_pad
+    local status_w = strip_outer_w - btn_size.w - strip_gap
     local status_widget = TextWidget:new{
         text = status_text,
         face = Font:getFace("cfont", 13),
         max_width = status_w,
-        fgcolor = Blitbuffer.COLOR_BLACK,
+        fgcolor = Blitbuffer.COLOR_DARK_GRAY,
     }
     table.insert(vg, HorizontalGroup:new{
+        align = "center",
         HorizontalSpan:new{ width = left_pad },
+        btn_widget,
+        HorizontalSpan:new{ width = strip_gap },
         LeftContainer:new{
-            dimen = Geom:new{ w = status_w, h = strip_h },
+            dimen = Geom:new{ w = status_w, h = btn_size.h },
             status_widget,
         },
-        refresh_btn,
     })
     table.insert(vg, VerticalSpan:new{ width = Screen:scaleBySize(8) })
 
