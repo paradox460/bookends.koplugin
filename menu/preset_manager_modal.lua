@@ -443,46 +443,57 @@ function PresetManagerModal._renderLocalRows(self, vg, width, row_height, font_s
         table.insert(vg, VerticalSpan:new{ width = card_slot_h })
     end
 
-    -- Pagination nav (matching font picker style: thin dark-grey hairline
-    -- above, with a bit of breathing room on either side).
-    if total_pages > 1 then
-        local page_cur = self.page
-        local page_nav = HorizontalGroup:new{
-            align = "center",
-            Button:new{ icon = "chevron.first",
-                callback = function() self.setPage(1) end,
-                bordersize = 0, enabled = page_cur > 1, show_parent = self.modal_widget },
-            HorizontalSpan:new{ width = Screen:scaleBySize(8) },
-            Button:new{ icon = "chevron.left",
-                callback = function() self.setPage(page_cur - 1) end,
-                bordersize = 0, enabled = page_cur > 1, show_parent = self.modal_widget },
-            HorizontalSpan:new{ width = Screen:scaleBySize(16) },
-            Button:new{ text = T(_("Page %1 of %2"), page_cur, total_pages),
-                text_font_size = 16, callback = function() end,
-                bordersize = 0, show_parent = self.modal_widget },
-            HorizontalSpan:new{ width = Screen:scaleBySize(16) },
-            Button:new{ icon = "chevron.right",
-                callback = function() self.setPage(page_cur + 1) end,
-                bordersize = 0, enabled = page_cur < total_pages, show_parent = self.modal_widget },
-            HorizontalSpan:new{ width = Screen:scaleBySize(8) },
-            Button:new{ icon = "chevron.last",
-                callback = function() self.setPage(total_pages) end,
-                bordersize = 0, enabled = page_cur < total_pages, show_parent = self.modal_widget },
-        }
-        table.insert(vg, VerticalSpan:new{ width = Size.span.vertical_default })
-        table.insert(vg, CenterContainer:new{
-            dimen = Geom:new{ w = width, h = Size.line.thin },
-            LineWidget:new{
-                background = Blitbuffer.COLOR_DARK_GRAY,
-                dimen = Geom:new{ w = width - 2 * Size.padding.default, h = Size.line.thin },
-            },
-        })
-        table.insert(vg, VerticalSpan:new{ width = Size.span.vertical_default })
-        table.insert(vg, CenterContainer:new{
-            dimen = Geom:new{ w = width, h = row_height },
-            page_nav,
-        })
+    -- Always reserve the pagination area's full height (span + hairline +
+    -- span + nav) even when we don't render it, so Local ↔ Gallery and
+    -- empty ↔ loaded transitions don't resize the modal.
+    PresetManagerModal._renderPagination(self, vg, width, row_height, total_pages)
+end
+
+--- Render the pagination strip OR reserve its equivalent height. Shared
+--- between Local and Gallery tabs so single-page and multi-page states
+--- produce identical modal heights.
+function PresetManagerModal._renderPagination(self, vg, width, row_height, total_pages)
+    local pagination_area_h = 2 * Size.span.vertical_default + Size.line.thin + row_height
+    if total_pages <= 1 then
+        table.insert(vg, VerticalSpan:new{ width = pagination_area_h })
+        return
     end
+    local page_cur = self.page
+    local page_nav = HorizontalGroup:new{
+        align = "center",
+        Button:new{ icon = "chevron.first",
+            callback = function() self.setPage(1) end,
+            bordersize = 0, enabled = page_cur > 1, show_parent = self.modal_widget },
+        HorizontalSpan:new{ width = Screen:scaleBySize(8) },
+        Button:new{ icon = "chevron.left",
+            callback = function() self.setPage(page_cur - 1) end,
+            bordersize = 0, enabled = page_cur > 1, show_parent = self.modal_widget },
+        HorizontalSpan:new{ width = Screen:scaleBySize(16) },
+        Button:new{ text = T(_("Page %1 of %2"), page_cur, total_pages),
+            text_font_size = 16, callback = function() end,
+            bordersize = 0, show_parent = self.modal_widget },
+        HorizontalSpan:new{ width = Screen:scaleBySize(16) },
+        Button:new{ icon = "chevron.right",
+            callback = function() self.setPage(page_cur + 1) end,
+            bordersize = 0, enabled = page_cur < total_pages, show_parent = self.modal_widget },
+        HorizontalSpan:new{ width = Screen:scaleBySize(8) },
+        Button:new{ icon = "chevron.last",
+            callback = function() self.setPage(total_pages) end,
+            bordersize = 0, enabled = page_cur < total_pages, show_parent = self.modal_widget },
+    }
+    table.insert(vg, VerticalSpan:new{ width = Size.span.vertical_default })
+    table.insert(vg, CenterContainer:new{
+        dimen = Geom:new{ w = width, h = Size.line.thin },
+        LineWidget:new{
+            background = Blitbuffer.COLOR_DARK_GRAY,
+            dimen = Geom:new{ w = width - 2 * Size.padding.default, h = Size.line.thin },
+        },
+    })
+    table.insert(vg, VerticalSpan:new{ width = Size.span.vertical_default })
+    table.insert(vg, CenterContainer:new{
+        dimen = Geom:new{ w = width, h = row_height },
+        page_nav,
+    })
 end
 
 function PresetManagerModal._addRow(self, vg, width, row_height, font_size, baseline, left_pad, opts)
@@ -1091,10 +1102,13 @@ function PresetManagerModal._renderGalleryRows(self, vg, width, row_height, font
     table.insert(vg, VerticalSpan:new{ width = Screen:scaleBySize(8) })
 
     -- Empty state: pad the body so the modal's height stays consistent with
-    -- a populated list. The status strip above already explains what to do.
+    -- a populated list (5 card slots + the pagination area that appears when
+    -- the gallery has more than 5 entries). The status strip above already
+    -- explains what to do.
     if not self.gallery_index or not self.gallery_index.presets then
         local card_slot_h = Screen:scaleBySize(64) + Screen:scaleBySize(8)
-        table.insert(vg, VerticalSpan:new{ width = card_slot_h * 5 })
+        local pagination_area_h = 2 * Size.span.vertical_default + Size.line.thin + row_height
+        table.insert(vg, VerticalSpan:new{ width = card_slot_h * 5 + pagination_area_h })
         return
     end
 
@@ -1142,45 +1156,7 @@ function PresetManagerModal._renderGalleryRows(self, vg, width, row_height, font
         table.insert(vg, VerticalSpan:new{ width = card_slot_h })
     end
 
-    -- Pagination nav (matches Local tab's visual)
-    if total_pages > 1 then
-        local page_cur = self.page
-        local page_nav = HorizontalGroup:new{
-            align = "center",
-            Button:new{ icon = "chevron.first",
-                callback = function() self.setPage(1) end,
-                bordersize = 0, enabled = page_cur > 1, show_parent = self.modal_widget },
-            HorizontalSpan:new{ width = Screen:scaleBySize(8) },
-            Button:new{ icon = "chevron.left",
-                callback = function() self.setPage(page_cur - 1) end,
-                bordersize = 0, enabled = page_cur > 1, show_parent = self.modal_widget },
-            HorizontalSpan:new{ width = Screen:scaleBySize(16) },
-            Button:new{ text = T(_("Page %1 of %2"), page_cur, total_pages),
-                text_font_size = 16, callback = function() end,
-                bordersize = 0, show_parent = self.modal_widget },
-            HorizontalSpan:new{ width = Screen:scaleBySize(16) },
-            Button:new{ icon = "chevron.right",
-                callback = function() self.setPage(page_cur + 1) end,
-                bordersize = 0, enabled = page_cur < total_pages, show_parent = self.modal_widget },
-            HorizontalSpan:new{ width = Screen:scaleBySize(8) },
-            Button:new{ icon = "chevron.last",
-                callback = function() self.setPage(total_pages) end,
-                bordersize = 0, enabled = page_cur < total_pages, show_parent = self.modal_widget },
-        }
-        table.insert(vg, VerticalSpan:new{ width = Size.span.vertical_default })
-        table.insert(vg, CenterContainer:new{
-            dimen = Geom:new{ w = width, h = Size.line.thin },
-            LineWidget:new{
-                background = Blitbuffer.COLOR_DARK_GRAY,
-                dimen = Geom:new{ w = width - 2 * Size.padding.default, h = Size.line.thin },
-            },
-        })
-        table.insert(vg, VerticalSpan:new{ width = Size.span.vertical_default })
-        table.insert(vg, CenterContainer:new{
-            dimen = Geom:new{ w = width, h = row_height },
-            page_nav,
-        })
-    end
+    PresetManagerModal._renderPagination(self, vg, width, row_height, total_pages)
 end
 
 function PresetManagerModal._previewGallery(self, entry)
