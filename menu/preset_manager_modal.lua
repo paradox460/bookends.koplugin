@@ -62,15 +62,24 @@ function PresetManagerModal.show(bookends)
     -- Initial synchronous build on show
     self.rebuildSync = function() PresetManagerModal._rebuild(self) end
     self.close = function(restore) PresetManagerModal._close(self, restore) end
-    self.fetchGallery = function(force)
-        if self.gallery_loading then return end
-        if self.gallery_index and not force then return end
+    -- Load the cached index synchronously — no network. Used when the
+    -- Gallery tab opens so the user sees previously-refreshed data without
+    -- an implicit remote request.
+    self.loadCachedGallery = function()
+        if self.gallery_index then return end
         local Gallery = require("preset_gallery")
-        if not self.gallery_index then
-            local cached = Gallery.getCachedIndex()
-            if cached then self.gallery_index = cached end
-        end
+        local cached = Gallery.getCachedIndex()
+        if cached then self.gallery_index = cached end
+    end
+    -- Explicit refresh: only called by the user tapping the Refresh button.
+    -- This is the single code path that initiates a network request for the
+    -- gallery index.
+    self.refreshGallery = function()
+        if self.gallery_loading then return end
+        local Gallery = require("preset_gallery")
         self.gallery_loading = true
+        self.gallery_error = nil
+        self.rebuild()
         Gallery.fetchIndex("KOReader-Bookends", function(idx, err)
             self.gallery_loading = false
             if idx then
@@ -86,7 +95,7 @@ function PresetManagerModal.show(bookends)
         if self.tab ~= tab then
             self.tab = tab
             self.page = 1
-            if tab == "gallery" then self.fetchGallery(false) end
+            if tab == "gallery" then self.loadCachedGallery() end
             self.rebuild()
         end
     end
@@ -401,22 +410,42 @@ function PresetManagerModal._renderLocalRows(self, vg, width, row_height, font_s
         if selected_key == nil then selected_key = "_empty" end
     end
 
-    -- Virtual "(No overlay)" row
-    PresetManagerModal._addRow(self, vg, width, row_height, font_size, baseline, left_pad, {
-        display = _("(No overlay)"),
-        star_key = "_empty",
-        on_preview = function() self.previewBlank() end,
-        is_selected = (selected_key == "_empty"),
-        is_virtual = true,
-    })
+    -- Virtual "(No overlay)" row — only on page 1. It's a cycle slot, not a
+    -- preset: tapping the card is a no-op with an explanatory toast; only the
+    -- star is interactive. "Selected" state reflects the live cycle pointer.
+    if self.page == 1 then
+        PresetManagerModal._addRow(self, vg, width, row_height, font_size, baseline, left_pad, {
+            display = _("(No overlay)"),
+            description = _("Star to include a blank slot in your preset cycle."),
+            star_key = "_empty",
+            on_preview = function()
+                Notification:notify(_("Tap the star to include a blank slot when cycling presets."))
+            end,
+            is_selected = (selected_key == "_empty"),
+        })
+    end
 
-    -- Real presets, paginated
+    -- Real presets, paginated. Page 1 has room for one fewer because of the
+    -- pinned (No overlay) row above.
     local presets = self.bookends:readPresetFiles()
-    local ROWS_PER_PAGE = 5
-    local total_pages = math.max(1, math.ceil(#presets / ROWS_PER_PAGE))
+    local FIRST_PAGE_ROWS = 4
+    local OTHER_PAGE_ROWS = 5
+    local total_pages = 1
+    if #presets > FIRST_PAGE_ROWS then
+        total_pages = 1 + math.ceil((#presets - FIRST_PAGE_ROWS) / OTHER_PAGE_ROWS)
+    end
     if self.page > total_pages then self.page = total_pages end
-    local start_idx = (self.page - 1) * ROWS_PER_PAGE + 1
-    local end_idx = math.min(start_idx + ROWS_PER_PAGE - 1, #presets)
+    local start_idx, end_idx
+    if self.page == 1 then
+        start_idx = 1
+        end_idx = math.min(FIRST_PAGE_ROWS, #presets)
+    else
+        start_idx = FIRST_PAGE_ROWS + (self.page - 2) * OTHER_PAGE_ROWS + 1
+        end_idx = math.min(start_idx + OTHER_PAGE_ROWS - 1, #presets)
+    end
+    -- Used only by the pad-out loop below, which pads real rows only (the
+    -- virtual (No overlay) card already takes one slot on page 1).
+    local ROWS_PER_PAGE = (self.page == 1) and FIRST_PAGE_ROWS or OTHER_PAGE_ROWS
     for i = start_idx, end_idx do
         local p = presets[i]
         PresetManagerModal._addRow(self, vg, width, row_height, font_size, baseline, left_pad, {
@@ -1003,80 +1032,96 @@ function PresetManagerModal._renderGalleryRows(self, vg, width, row_height, font
     local Gallery = require("preset_gallery")
     local online = Gallery.isOnline()
 
-    if self.gallery_loading and not self.gallery_index then
-        table.insert(vg, LeftContainer:new{
-            dimen = Geom:new{ w = width, h = row_height },
-            HorizontalGroup:new{
-                HorizontalSpan:new{ width = left_pad },
-                TextWidget:new{
-                    text = _("Loading gallery…"),
-                    face = Font:getFace("cfont", 16),
-                    fgcolor = Blitbuffer.COLOR_BLACK,
-                },
-            },
-        })
-        return
+    -- Top gap so the control strip doesn't butt against the title separator
+    table.insert(vg, VerticalSpan:new{ width = Screen:scaleBySize(8) })
+
+    -- Control strip: status text on the left (loading / last-updated /
+    -- offline) and a Refresh button on the right. Refresh is the ONLY code
+    -- path that triggers a remote request — we never fetch on tab open.
+    local strip_pad = Screen:scaleBySize(12)
+    local strip_outer_w = width - 2 * left_pad
+    local strip_h = Screen:scaleBySize(36)
+
+    local status_text
+    if self.gallery_loading then
+        status_text = _("Refreshing…")
+    elseif not online then
+        status_text = _("Offline — cached presets only")
+    elseif self.gallery_error then
+        status_text = _("Refresh failed — showing cached data")
+    else
+        local ts = Gallery.getCacheTimestamp()
+        if ts then
+            local mins = math.max(0, math.floor((os.time() - ts) / 60))
+            if mins < 1 then
+                status_text = _("Updated just now")
+            elseif mins < 60 then
+                status_text = T(_("Updated %1 min ago"), mins)
+            elseif mins < 60 * 24 then
+                status_text = T(_("Updated %1h ago"), math.floor(mins / 60))
+            else
+                status_text = T(_("Updated %1d ago"), math.floor(mins / (60 * 24)))
+            end
+        else
+            status_text = _("Not downloaded yet")
+        end
     end
-    if self.gallery_error and not self.gallery_index then
-        local msg = self.gallery_error == "offline"
-            and _("Gallery requires an internet connection")
-            or _("Gallery data is temporarily unavailable")
+
+    local refresh_btn = Button:new{
+        text = _("Refresh"),
+        callback = function() self.refreshGallery() end,
+        enabled = online and not self.gallery_loading,
+        show_parent = self.modal_widget,
+        text_font_size = 14,
+    }
+    local btn_w = refresh_btn:getSize().w
+    local status_w = strip_outer_w - btn_w - strip_pad
+    local status_widget = TextWidget:new{
+        text = status_text,
+        face = Font:getFace("cfont", 13),
+        max_width = status_w,
+        fgcolor = Blitbuffer.COLOR_BLACK,
+    }
+    table.insert(vg, HorizontalGroup:new{
+        HorizontalSpan:new{ width = left_pad },
+        LeftContainer:new{
+            dimen = Geom:new{ w = status_w, h = strip_h },
+            status_widget,
+        },
+        refresh_btn,
+    })
+    table.insert(vg, VerticalSpan:new{ width = Screen:scaleBySize(8) })
+
+    -- Empty state: no cached index yet. Prompt the user to refresh.
+    if not self.gallery_index or not self.gallery_index.presets then
+        local msg
+        if self.gallery_loading then
+            msg = _("Loading gallery…")
+        elseif not online then
+            msg = _("Gallery requires an internet connection. Connect to wifi and tap Refresh.")
+        elseif self.gallery_error then
+            msg = _("Gallery data is temporarily unavailable. Tap Refresh to try again.")
+        else
+            msg = _("Tap Refresh to download the preset gallery.")
+        end
         table.insert(vg, LeftContainer:new{
             dimen = Geom:new{ w = width, h = row_height * 2 },
             HorizontalGroup:new{
                 HorizontalSpan:new{ width = left_pad },
                 TextWidget:new{
                     text = msg,
-                    face = Font:getFace("cfont", 16),
+                    face = Font:getFace("cfont", 15),
+                    max_width = width - 2 * left_pad,
                     fgcolor = Blitbuffer.COLOR_BLACK,
                 },
             },
         })
         return
     end
-    if not self.gallery_index or not self.gallery_index.presets then return end
 
     -- Build local-preset-name set to mark already-installed entries with ✓
     local local_names = {}
     for _i, p in ipairs(self.bookends:readPresetFiles()) do local_names[p.name] = true end
-
-    -- Top gap so cards don't butt against the header separator
-    table.insert(vg, VerticalSpan:new{ width = Screen:scaleBySize(8) })
-
-    -- Offline banner: appears above the cached cards so the state is obvious.
-    -- Tapping an uncached preset will show a clearer offline notification, but
-    -- the banner lets the user know before they try.
-    if not online then
-        local banner_pad = Screen:scaleBySize(12)
-        local banner_outer_w = width - 2 * left_pad
-        local banner_content_w = banner_outer_w - 2 * banner_pad - 2 * Size.border.thin
-        local banner_h = Screen:scaleBySize(36)
-        local banner_frame = FrameContainer:new{
-            bordersize = Size.border.thin,
-            radius = Size.radius.default,
-            padding = 0,
-            padding_left = banner_pad,
-            padding_right = banner_pad,
-            padding_top = 0,
-            padding_bottom = 0,
-            margin = 0,
-            background = Blitbuffer.COLOR_LIGHT_GRAY or Blitbuffer.gray(0.92),
-            LeftContainer:new{
-                dimen = Geom:new{ w = banner_content_w, h = banner_h },
-                TextWidget:new{
-                    text = _("Offline — only already-downloaded presets will load."),
-                    face = Font:getFace("cfont", 13),
-                    max_width = banner_content_w,
-                    fgcolor = Blitbuffer.COLOR_BLACK,
-                },
-            },
-        }
-        table.insert(vg, HorizontalGroup:new{
-            HorizontalSpan:new{ width = left_pad },
-            banner_frame,
-        })
-        table.insert(vg, VerticalSpan:new{ width = Screen:scaleBySize(8) })
-    end
 
     local ROWS_PER_PAGE = 5
     local entries = self.gallery_index.presets
