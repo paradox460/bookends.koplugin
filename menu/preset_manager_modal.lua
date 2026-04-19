@@ -489,19 +489,27 @@ function PresetManagerModal._addRow(self, vg, width, row_height, font_size, base
         or Blitbuffer.COLOR_DARK_GRAY
 
     -- Title line: "Title" + optional " by Author" in smaller lighter type.
+    -- Both widgets get the same forced_height + forced_baseline so the 18pt
+    -- title and 12pt "by Author" tail share a visual baseline.
+    local title_h = Screen:scaleBySize(26)
+    local title_bl = Screen:scaleBySize(20)
     local title_widget = TextWidget:new{
         text = opts.display,
         face = Font:getFace("cfont", 18),
         bold = opts.is_selected or false,
+        forced_height = title_h,
+        forced_baseline = title_bl,
         max_width = content_w,
         fgcolor = Blitbuffer.COLOR_BLACK,
     }
-    local title_line = HorizontalGroup:new{ align = "bottom", title_widget }
+    local title_line = HorizontalGroup:new{ title_widget }
     if not opts.is_virtual and opts.author and opts.author ~= "" then
         table.insert(title_line, HorizontalSpan:new{ width = Screen:scaleBySize(6) })
         table.insert(title_line, TextWidget:new{
             text = _("by") .. " " .. opts.author,
             face = Font:getFace("cfont", 12),
+            forced_height = title_h,
+            forced_baseline = title_bl,
             max_width = content_w - title_widget:getWidth(),
             fgcolor = secondary_fg,
         })
@@ -557,28 +565,46 @@ function PresetManagerModal._addRow(self, vg, width, row_height, font_size, base
         card.onHoldSelect = function() opts.on_hold(); return true end
     end
 
-    -- Star to the right of the card, outside the frame. Its own tap target,
-    -- toggles cycle membership without previewing.
-    local star_widget = TextWidget:new{
-        text = starred and "\xE2\x98\x85" or "\xE2\x98\x86",
-        face = Font:getFace("infofont", 22),
-        bold = true,
-        fgcolor = Blitbuffer.COLOR_BLACK,
-    }
-    local star_ic = InputContainer:new{
-        dimen = Geom:new{ w = star_width, h = card_height },
-        CenterContainer:new{ dimen = Geom:new{ w = star_width, h = card_height }, star_widget },
-    }
-    star_ic.ges_events = { TapSelect = { GestureRange:new{ ges = "tap", range = star_ic.dimen } } }
-    local key = opts.star_key
-    star_ic.onTapSelect = function() self.toggleStar(key); return true end
+    -- Right-hand accent column. Local rows show a tappable ★/☆ that toggles
+    -- cycle membership. Gallery rows show a ✓ if the preset is already
+    -- installed locally (not tappable). Anything else gets an empty slot so
+    -- cards stay left-aligned consistently.
+    local accent_ic
+    if opts.star_key then
+        local star_widget = TextWidget:new{
+            text = starred and "\xE2\x98\x85" or "\xE2\x98\x86",
+            face = Font:getFace("infofont", 22),
+            bold = true,
+            fgcolor = Blitbuffer.COLOR_BLACK,
+        }
+        accent_ic = InputContainer:new{
+            dimen = Geom:new{ w = star_width, h = card_height },
+            CenterContainer:new{ dimen = Geom:new{ w = star_width, h = card_height }, star_widget },
+        }
+        accent_ic.ges_events = { TapSelect = { GestureRange:new{ ges = "tap", range = accent_ic.dimen } } }
+        local key = opts.star_key
+        accent_ic.onTapSelect = function() self.toggleStar(key); return true end
+    elseif opts.installed then
+        local check_widget = TextWidget:new{
+            text = "\xE2\x9C\x93",  -- ✓
+            face = Font:getFace("infofont", 22),
+            bold = true,
+            fgcolor = Blitbuffer.COLOR_BLACK,
+        }
+        accent_ic = CenterContainer:new{
+            dimen = Geom:new{ w = star_width, h = card_height },
+            check_widget,
+        }
+    else
+        accent_ic = HorizontalSpan:new{ width = star_width }
+    end
 
     table.insert(vg, HorizontalGroup:new{
         align = "center",
         HorizontalSpan:new{ width = left_pad },
         card,
         HorizontalSpan:new{ width = star_gap },
-        star_ic,
+        accent_ic,
     })
     -- Gap between cards
     table.insert(vg, VerticalSpan:new{ width = Screen:scaleBySize(8) })
@@ -1000,12 +1026,14 @@ function PresetManagerModal._renderGalleryRows(self, vg, width, row_height, font
     end
     if not self.gallery_index or not self.gallery_index.presets then return end
 
-    -- Build local-preset-name set for ✓ indicator
+    -- Build local-preset-name set to mark already-installed entries with ✓
     local local_names = {}
-    for _, p in ipairs(self.bookends:readPresetFiles()) do local_names[p.name] = true end
+    for _i, p in ipairs(self.bookends:readPresetFiles()) do local_names[p.name] = true end
 
-    -- Paginate gallery entries the same way Local does
-    local ROWS_PER_PAGE = 8
+    -- Top gap so cards don't butt against the header separator
+    table.insert(vg, VerticalSpan:new{ width = Screen:scaleBySize(8) })
+
+    local ROWS_PER_PAGE = 5
     local entries = self.gallery_index.presets
     local total_pages = math.max(1, math.ceil(#entries / ROWS_PER_PAGE))
     if self.page > total_pages then self.page = total_pages end
@@ -1014,43 +1042,16 @@ function PresetManagerModal._renderGalleryRows(self, vg, width, row_height, font
 
     for i = start_idx, end_idx do
         local entry = entries[i]
-        local check = local_names[entry.name] and "\xE2\x9C\x93 " or ""
-        local by = entry.author and (" — " .. entry.author) or ""
-        local display = check .. entry.name .. by
-        -- Gallery rows: no star (cycle only holds Local), tap = preview
-        local name_widget = TextWidget:new{
-            text = (self.previewing and self.previewing.kind == "gallery"
-                    and self.previewing.entry and self.previewing.entry.slug == entry.slug
-                    and "\xE2\x96\xB8 " or "   ") .. display,
-            face = Font:getFace("cfont", font_size),
-            forced_height = row_height,
-            forced_baseline = baseline,
-            max_width = width - 2 * left_pad,
-            fgcolor = Blitbuffer.COLOR_BLACK,
-            bold = (self.previewing and self.previewing.kind == "gallery"
-                    and self.previewing.entry and self.previewing.entry.slug == entry.slug) or false,
-        }
-        local name_ic = InputContainer:new{
-            dimen = Geom:new{ w = width - 2 * left_pad, h = row_height },
-            name_widget,
-        }
-        name_ic.ges_events = { TapSelect = { GestureRange:new{ ges = "tap", range = name_ic.dimen } } }
+        local is_selected = self.previewing and self.previewing.kind == "gallery"
+            and self.previewing.entry and self.previewing.entry.slug == entry.slug
         local captured = entry
-        name_ic.onTapSelect = function() PresetManagerModal._previewGallery(self, captured); return true end
-        table.insert(vg, HorizontalGroup:new{ HorizontalSpan:new{ width = left_pad }, name_ic })
-    end
-
-    -- Pad to keep modal height stable
-    local rendered = end_idx - start_idx + 1
-    for _ = rendered + 1, ROWS_PER_PAGE do
-        table.insert(vg, HorizontalGroup:new{
-            HorizontalSpan:new{ width = left_pad },
-            TextWidget:new{
-                text = "",
-                face = Font:getFace("cfont", font_size),
-                forced_height = row_height,
-                forced_baseline = baseline,
-            },
+        PresetManagerModal._addRow(self, vg, width, row_height, font_size, baseline, left_pad, {
+            display = entry.name,
+            description = entry.description,
+            author = entry.author,
+            on_preview = function() PresetManagerModal._previewGallery(self, captured) end,
+            is_selected = is_selected,
+            installed = local_names[entry.name] == true,
         })
     end
 
