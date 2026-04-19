@@ -1092,6 +1092,9 @@ function Bookends:_paintToInner(bb, x, y)
                 if all_bars.width then
                     cfg.bar.width = all_bars.width
                 end
+                if all_bars.height then
+                    cfg.bar.height = all_bars.height
+                end
                 cfg.bar_height = (pos_settings.line_bar_height and pos_settings.line_bar_height[i]) or nil
                 cfg.bar_style = (pos_settings.line_bar_style and pos_settings.line_bar_style[i]) or nil
                 cfg.bar_colors = bar_colors
