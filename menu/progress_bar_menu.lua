@@ -333,6 +333,41 @@ function Bookends:buildSingleBarMenu(bar_idx, bar_cfg)
                     end,
                 })
 
+                -- Per-bar border thickness override
+                table.insert(custom_items, {
+                    text_func = function()
+                        local t = bc.border_thickness
+                        if t then
+                            return _("Border thickness") .. ": " .. t .. "px"
+                        end
+                        local global_t = 1
+                        local gbc = self.settings:readSetting("bar_colors")
+                        if gbc and gbc.border_thickness then global_t = gbc.border_thickness end
+                        return _("Border thickness") .. ": " .. _("default") .. " (" .. global_t .. "px)"
+                    end,
+                    enabled_func = function() return bar_cfg.colors ~= nil end,
+                    keep_menu_open = true,
+                    callback = function(touchmenu_instance)
+                        local global_default = 1
+                        local gbc = self.settings:readSetting("bar_colors")
+                        if gbc and gbc.border_thickness then global_default = gbc.border_thickness end
+                        local current = bc.border_thickness or global_default
+                        self:showNudgeDialog(_("Border thickness"), current, 0, 10, global_default, "px",
+                            function(val)
+                                bc.border_thickness = (val ~= global_default) and val or nil
+                                bar_cfg.colors = bc
+                                saveBar()
+                            end,
+                            nil, nil, nil, touchmenu_instance)
+                    end,
+                    hold_callback = function(touchmenu_instance)
+                        bc.border_thickness = nil
+                        bar_cfg.colors = bc
+                        saveBar()
+                        if touchmenu_instance then touchmenu_instance:updateItems() end
+                    end,
+                })
+
                 -- Reset custom to defaults
                 table.insert(custom_items, {
                     text = _("Reset custom to defaults"),
