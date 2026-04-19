@@ -274,6 +274,14 @@ function Bookends:setupTouchZones()
                 ratio_w = DTAP_ZONE_MINIBAR.w, ratio_h = DTAP_ZONE_MINIBAR.h,
             },
             handler = function(ges)
+                local action = self.settings:readSetting("bottom_center_tap_action")
+                if action == "toggle" then
+                    self:onToggleBookends()
+                    return true
+                elseif action == "cycle" then
+                    self:onCycleBookendsPreset()
+                    return true
+                end
                 -- Block the stock footer from re-appearing when we've disabled it
                 if self.stock_bar_disabled then
                     return true

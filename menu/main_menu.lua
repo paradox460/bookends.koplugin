@@ -250,15 +250,68 @@ function Bookends:buildMainMenu()
                     separator = true,
                 },
                 {
-                    text = _("Long-press progress bars to skim document"),
-                    checked_func = function()
-                        return self.skim_on_hold
+                    text_func = function()
+                        local action = self.settings:readSetting("bottom_center_tap_action")
+                        local label = _("Bottom center tap gesture")
+                        if action == "toggle" then
+                            return label .. " (" .. _("toggle bookends") .. ")"
+                        elseif action == "cycle" then
+                            return label .. " (" .. _("cycle presets") .. ")"
+                        end
+                        return label
                     end,
-                    callback = function()
-                        self.skim_on_hold = not self.skim_on_hold
-                        self.settings:saveSetting("skim_on_hold", self.skim_on_hold)
+                    help_text = _("Configure what happens when you tap the centre of the status bar area, and whether long-pressing a progress bar opens the skim dialog."),
+                    sub_item_table_func = function()
+                        local function setTapAction(val)
+                            if val == nil then
+                                self.settings:delSetting("bottom_center_tap_action")
+                            else
+                                self.settings:saveSetting("bottom_center_tap_action", val)
+                            end
+                        end
+                        return {
+                            {
+                                text = _("Toggle bookends"),
+                                checked_func = function()
+                                    return self.settings:readSetting("bottom_center_tap_action") == "toggle"
+                                end,
+                                callback = function()
+                                    if self.settings:readSetting("bottom_center_tap_action") == "toggle" then
+                                        setTapAction(nil)
+                                    else
+                                        setTapAction("toggle")
+                                    end
+                                end,
+                                radio = true,
+                            },
+                            {
+                                text = _("Cycle starred presets"),
+                                checked_func = function()
+                                    return self.settings:readSetting("bottom_center_tap_action") == "cycle"
+                                end,
+                                callback = function()
+                                    if self.settings:readSetting("bottom_center_tap_action") == "cycle" then
+                                        setTapAction(nil)
+                                    else
+                                        setTapAction("cycle")
+                                    end
+                                end,
+                                radio = true,
+                                separator = true,
+                            },
+                            {
+                                text = _("Long-press progress bars to skim document"),
+                                checked_func = function()
+                                    return self.skim_on_hold
+                                end,
+                                callback = function()
+                                    self.skim_on_hold = not self.skim_on_hold
+                                    self.settings:saveSetting("skim_on_hold", self.skim_on_hold)
+                                end,
+                                help_text = _("Opens the skim dialog when you long-press on a full-width progress bar. Replaces the stock status bar's long-press to skim feature."),
+                            },
+                        }
                     end,
-                    help_text = _("Opens the skim dialog when you long-press on a full-width progress bar. Replaces the stock status bar's long-press to skim feature."),
                 },
                 {
                     text_func = function()
