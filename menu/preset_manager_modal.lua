@@ -775,6 +775,15 @@ end
 -- notification rather than crashing the overlay. The submit path runs rarely
 -- and shuttles between several dialogs; easy place for regressions.
 local function submitToGalleryImpl(self, entry)
+    -- Force any pending autosave to disk so recent edits (font change, line
+    -- tweak, etc.) are present in the preset file before we serialize it.
+    -- autosaveActivePreset writes the *active* preset, so this helps when the
+    -- user is editing the same preset they're about to submit.
+    pcall(self.bookends.autosaveActivePreset, self.bookends)
+    local refreshed = self.bookends.loadPresetFile(
+        self.bookends:presetDir() .. "/" .. entry.filename)
+    if refreshed then entry.preset = refreshed end
+
     -- If any required metadata is missing, prompt inline, save it, and continue.
     local data = entry.preset
     local function needsField(f) return not data[f] or data[f] == "" end
