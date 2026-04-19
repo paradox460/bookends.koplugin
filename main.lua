@@ -342,13 +342,23 @@ function Bookends:onCycleBookendsPreset()
     local ok_save, save_err = pcall(self.autosaveActivePreset, self)
     if not ok_save then require("logger").warn("bookends: pre-cycle autosave failed:", save_err) end
 
-    local cycle = self.settings:readSetting("preset_cycle") or {}
+    -- Strip any legacy "_empty" sentinel from the cycle. It used to mean
+    -- "cycle to a blank overlay" but we've removed that concept — users who
+    -- want a blank state can create an empty preset instead.
+    local cycle_raw = self.settings:readSetting("preset_cycle") or {}
+    local cycle = {}
+    for _, entry in ipairs(cycle_raw) do
+        if entry ~= "_empty" then cycle[#cycle + 1] = entry end
+    end
+    if #cycle ~= #cycle_raw then
+        self.settings:saveSetting("preset_cycle", cycle)
+    end
     if #cycle == 0 then return true end
 
     local active = self:getActivePresetFilename()
     local idx = 1
     for i, entry in ipairs(cycle) do
-        if entry == active or (active == nil and entry == "_empty") then
+        if entry == active then
             idx = (i % #cycle) + 1
             break
         end
@@ -356,20 +366,6 @@ function Bookends:onCycleBookendsPreset()
 
     local next_entry = cycle[idx]
     local Notification = require("ui/widget/notification")
-
-    if next_entry == "_empty" then
-        for _, pos in pairs(self.positions) do pos.lines = {} end
-        -- Also disable any progress bars so the overlay really is blank.
-        if self.progress_bars then
-            for i = 1, #self.progress_bars do
-                if self.progress_bars[i] then self.progress_bars[i].enabled = false end
-            end
-        end
-        self:setActivePresetFilename(nil)
-        self:markDirty()
-        Notification:notify(_("(No overlay)"))
-        return true
-    end
 
     local ok, err = self:applyPresetFile(next_entry)
     if not ok then

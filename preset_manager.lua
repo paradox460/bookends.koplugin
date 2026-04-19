@@ -269,6 +269,17 @@ function PresetManager.attach(Bookends)
         return self.settings:readSetting("active_preset_filename")
     end
 
+    --- Human-readable name of the active preset (the `name` field from its
+    --- file), or nil when no preset is active or the file can't be read.
+    function Bookends:getActivePresetName()
+        local filename = self:getActivePresetFilename()
+        if not filename then return nil end
+        for _, p in ipairs(self:readPresetFiles()) do
+            if p.filename == filename then return p.name end
+        end
+        return nil
+    end
+
     --- Set (or clear with nil) the active preset file.
     function Bookends:setActivePresetFilename(filename)
         if filename then

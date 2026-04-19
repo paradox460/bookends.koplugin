@@ -92,7 +92,6 @@ function PresetManagerModal.show(bookends)
     end
     self.setPage = function(p) self.page = p; self.rebuild() end
     self.previewLocal = function(p) PresetManagerModal._previewLocal(self, p) end
-    self.previewBlank = function() PresetManagerModal._previewBlank(self) end
     self.applyCurrent = function() PresetManagerModal._applyCurrent(self) end
     self.toggleStar = function(key) PresetManagerModal._toggleStar(self, key) end
 
@@ -141,30 +140,10 @@ function PresetManagerModal._previewLocal(self, entry)
     self.rebuild()
 end
 
-function PresetManagerModal._previewBlank(self)
-    -- Same reason as _previewLocal — flush tweaks before overwriting live state.
-    pcall(self.bookends.autosaveActivePreset, self.bookends)
-    self.bookends._previewing = true
-    for _, pos in pairs(self.bookends.positions) do pos.lines = {} end
-    -- Also disable any progress bars so the overlay really is blank.
-    if self.bookends.progress_bars then
-        for i = 1, #self.bookends.progress_bars do
-            if self.bookends.progress_bars[i] then
-                self.bookends.progress_bars[i].enabled = false
-            end
-        end
-    end
-    self.previewing = { kind = "blank", name = _("(No overlay)") }
-    self.bookends:markDirty()
-    self.rebuild()
-end
-
 function PresetManagerModal._applyCurrent(self)
     if not self.previewing then return end
     if self.previewing.kind == "local" then
         self.bookends:setActivePresetFilename(self.previewing.filename)
-    elseif self.previewing.kind == "blank" then
-        self.bookends:setActivePresetFilename(nil)
     elseif self.previewing.kind == "gallery" then
         -- Install: save to bookends_presets/ and make active.
         local entry = self.previewing.entry
@@ -397,72 +376,32 @@ function PresetManagerModal._renderLocalRows(self, vg, width, row_height, font_s
     -- or the currently-active preset when nothing is being previewed.
     local active_fn = self.bookends:getActivePresetFilename()
     local selected_key
-    if self.previewing then
-        if self.previewing.kind == "blank" then selected_key = "_empty"
-        elseif self.previewing.kind == "local" then selected_key = self.previewing.filename
-        end
+    if self.previewing and self.previewing.kind == "local" then
+        selected_key = self.previewing.filename
     else
-        selected_key = active_fn  -- nil means the virtual blank is active
-        if selected_key == nil then selected_key = "_empty" end
+        selected_key = active_fn
     end
 
-    -- Virtual "(No overlay)" row — only on page 1. A compact single-line
-    -- strip (not a card) whose total height matches the Gallery tab's
-    -- Refresh button strip so tab-switching doesn't resize the modal.
-    -- It's a cycle slot, not a preset: tap-the-label shows a hint, tap-the-
-    -- star toggles cycle membership (same as every other starred row).
-    if self.page == 1 then
-        local blank_selected = (selected_key == "_empty")
-        local compact_pad_v = Screen:scaleBySize(6)
-        local label_widget = TextWidget:new{
-            text = _("Star = in preset cycle; star this to include a blank"),
-            face = Font:getFace("cfont", 14),
-            bold = blank_selected,
-            fgcolor = Blitbuffer.COLOR_BLACK,
-        }
-        -- Height is computed the same way the Gallery Refresh button derives
-        -- its own height (text + 2·btn_pad_v + 2·thin border), so the two
-        -- tabs produce identical vertical offsets above the first card.
-        local compact_h = label_widget:getSize().h + 2 * compact_pad_v + 2 * Size.border.thin
-        local star_widget = TextWidget:new{
-            text = isStarred(self.bookends, "_empty") and "\xE2\x98\x85" or "\xE2\x98\x86",
-            face = Font:getFace("infofont", 18),
-            bold = true,
-            fgcolor = Blitbuffer.COLOR_BLACK,
-        }
-        local star_w = Screen:scaleBySize(40)
-        local star_ic = InputContainer:new{
-            dimen = Geom:new{ w = star_w, h = compact_h },
-            CenterContainer:new{ dimen = Geom:new{ w = star_w, h = compact_h }, star_widget },
-        }
-        star_ic.ges_events = { TapSelect = { GestureRange:new{ ges = "tap", range = star_ic.dimen } } }
-        star_ic.onTapSelect = function() self.toggleStar("_empty"); return true end
-
-        local label_inner_w = width - 2 * left_pad - Screen:scaleBySize(6) - star_w
-        local label_ic = InputContainer:new{
-            dimen = Geom:new{ w = label_inner_w, h = compact_h },
-            LeftContainer:new{
-                dimen = Geom:new{ w = label_inner_w, h = compact_h },
-                label_widget,
-            },
-        }
-        label_ic.ges_events = { TapSelect = { GestureRange:new{ ges = "tap", range = label_ic.dimen } } }
-        label_ic.onTapSelect = function()
-            Notification:notify(_("Tap the star to include a blank slot when cycling presets."))
-            return true
-        end
-
-        table.insert(vg, HorizontalGroup:new{
-            align = "center",
-            HorizontalSpan:new{ width = left_pad },
-            label_ic,
-            HorizontalSpan:new{ width = Screen:scaleBySize(6) },
-            star_ic,
-        })
-        -- Match the inter-card gap so the first real preset sits at the
-        -- same distance below as subsequent rows sit from each other.
-        table.insert(vg, VerticalSpan:new{ width = Screen:scaleBySize(8) })
-    end
+    -- Non-interactive hint row on every page. Height mirrors the Gallery
+    -- Refresh button strip so tab-switching keeps the modal height stable.
+    local hint_pad_v = Screen:scaleBySize(6)
+    local hint_widget = TextWidget:new{
+        text = _("Star = include in preset cycle gesture"),
+        face = Font:getFace("cfont", 13),
+        fgcolor = Blitbuffer.COLOR_DARK_GRAY,
+    }
+    local hint_h = hint_widget:getSize().h + 2 * hint_pad_v + 2 * Size.border.thin
+    table.insert(vg, HorizontalGroup:new{
+        align = "center",
+        HorizontalSpan:new{ width = left_pad },
+        LeftContainer:new{
+            dimen = Geom:new{ w = width - 2 * left_pad, h = hint_h },
+            hint_widget,
+        },
+    })
+    -- Match the inter-card gap so the first real preset sits at the same
+    -- distance below as subsequent rows sit from each other.
+    table.insert(vg, VerticalSpan:new{ width = Screen:scaleBySize(8) })
 
     -- Real presets, paginated. Page 1 fits the same 5 cards as the Gallery
     -- tab — the compact (No overlay) strip above is small enough that we
