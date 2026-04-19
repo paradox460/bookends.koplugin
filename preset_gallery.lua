@@ -1,27 +1,13 @@
---- Preset Gallery: fetch remote index + preset files, cache to disk.
--- Mirrors updater.lua's HTTP pattern (LuaSocket + curl fallback).
-
-local DataStorage = require("datastorage")
-local logger = require("logger")
+--- Preset Gallery: fetch remote index + preset files over HTTPS.
+-- Online-only by design: Refresh always hits the network, results live in
+-- the modal's in-memory state, nothing is persisted to disk. Keeps the
+-- mental model simple — gallery == current state of the upstream repo.
 
 local Gallery = {}
 
 local INDEX_URL = "https://raw.githubusercontent.com/AndyHazz/bookends-presets/main/index.json"
 local BASE_URL  = "https://raw.githubusercontent.com/AndyHazz/bookends-presets/main/"
 local SUBMIT_URL = "https://bookends-submit.andy-nmc.workers.dev/submit"
-local CACHE_TTL = 24 * 3600  -- 24h
-
--- Session in-memory cache of downloaded preset data
-local _preset_cache = {}
-
-local function cacheDir()
-    local dir = DataStorage:getSettingsDir() .. "/bookends_gallery_cache"
-    local lfs = require("libs/libkoreader-lfs")
-    if lfs.attributes(dir, "mode") ~= "directory" then
-        lfs.mkdir(dir)
-    end
-    return dir
-end
 
 local function httpGet(url, user_agent)
     local ok_require, http, ltn12, socket, socketutil = pcall(function()
@@ -133,35 +119,13 @@ function Gallery.submitPreset(submission, user_agent, callback)
     callback({ pr_url = decoded.pr_url, pr_number = decoded.pr_number }, nil)
 end
 
-function Gallery.getCacheTimestamp()
-    local ts_path = cacheDir() .. "/index.timestamp"
-    local f = io.open(ts_path, "r")
-    if not f then return nil end
-    local ts = tonumber(f:read("*l"))
-    f:close()
-    return ts
-end
-
-function Gallery.getCachedIndex()
-    local path = cacheDir() .. "/index.json"
-    local f = io.open(path, "r")
-    if not f then return nil end
-    local body = f:read("*a")
-    f:close()
-    local ok, json = pcall(require, "json")
-    if not ok then return nil end
-    local ok2, data = pcall(json.decode, body)
-    if ok2 then return data end
-    return nil
-end
-
 function Gallery.fetchIndex(user_agent, callback)
     if not Gallery.isOnline() then
         callback(nil, "offline")
         return
     end
-    -- Cache-bust GitHub's CDN (Cache-Control: max-age=300 on raw.githubusercontent.com).
-    -- Without this, a user who just deleted a preset may still see it for ~5 minutes.
+    -- Cache-bust GitHub's CDN (Cache-Control: max-age=300 on raw.githubusercontent.com)
+    -- so each Refresh consults origin and sees repo edits immediately.
     local url = INDEX_URL .. "?ts=" .. tostring(os.time())
     local body = httpGet(url, user_agent or "KOReader-Bookends")
     if not body then
@@ -175,69 +139,25 @@ function Gallery.fetchIndex(user_agent, callback)
         callback(nil, "invalid index")
         return
     end
-    -- Cache
-    local path = cacheDir() .. "/index.json"
-    local f = io.open(path, "w")
-    if f then f:write(body); f:close() end
-    local ts_file = io.open(cacheDir() .. "/index.timestamp", "w")
-    if ts_file then ts_file:write(tostring(os.time())); ts_file:close() end
     callback(data, nil)
 end
 
-local function presetCachePath(slug)
-    -- Sanitise slug just in case an index entry sneaks unexpected characters.
-    local safe = tostring(slug):gsub("[^%w%-_]", "_")
-    return cacheDir() .. "/preset_" .. safe .. ".lua"
-end
-
-local function loadPresetBody(body)
-    local fn, err = loadstring(body)
-    if not fn then return nil, "parse error: " .. tostring(err) end
-    setfenv(fn, {})
-    local ok, preset = pcall(fn)
-    if not ok or type(preset) ~= "table" then
-        return nil, "runtime error"
-    end
-    return preset
-end
-
---- Return a previously-downloaded preset without hitting the network.
--- Checks the in-memory cache first, then the on-disk body cache.
-function Gallery.getCachedPreset(slug)
-    if _preset_cache[slug] then return _preset_cache[slug] end
-    local f = io.open(presetCachePath(slug), "r")
-    if not f then return nil end
-    local body = f:read("*a"); f:close()
-    if not body or body == "" then return nil end
-    local preset = loadPresetBody(body)
-    if preset then _preset_cache[slug] = preset end
-    return preset
-end
-
 function Gallery.downloadPreset(slug, preset_url, user_agent, callback)
-    -- 1. In-memory / on-disk cache first. Works whether online or not.
-    local cached = Gallery.getCachedPreset(slug)
-    if cached then
-        callback(cached, nil)
-        return
-    end
     if not Gallery.isOnline() then
         callback(nil, "offline")
         return
     end
     local body = httpGet(BASE_URL .. preset_url, user_agent or "KOReader-Bookends")
     if not body then callback(nil, "fetch failed"); return end
-    -- Persist the raw body so future sessions can load it offline.
-    local cf = io.open(presetCachePath(slug), "w")
-    if cf then cf:write(body); cf:close() end
-    local preset, err = loadPresetBody(body)
-    if not preset then callback(nil, err); return end
-    _preset_cache[slug] = preset
+    local fn, err = loadstring(body)
+    if not fn then callback(nil, "parse error: " .. tostring(err)); return end
+    setfenv(fn, {})
+    local ok, preset = pcall(fn)
+    if not ok or type(preset) ~= "table" then
+        callback(nil, "runtime error")
+        return
+    end
     callback(preset, nil)
-end
-
-function Gallery.clearCache()
-    _preset_cache = {}
 end
 
 return Gallery

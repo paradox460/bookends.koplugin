@@ -62,18 +62,10 @@ function PresetManagerModal.show(bookends)
     -- Initial synchronous build on show
     self.rebuildSync = function() PresetManagerModal._rebuild(self) end
     self.close = function(restore) PresetManagerModal._close(self, restore) end
-    -- Load the cached index synchronously — no network. Used when the
-    -- Gallery tab opens so the user sees previously-refreshed data without
-    -- an implicit remote request.
-    self.loadCachedGallery = function()
-        if self.gallery_index then return end
-        local Gallery = require("preset_gallery")
-        local cached = Gallery.getCachedIndex()
-        if cached then self.gallery_index = cached end
-    end
     -- Explicit refresh: only called by the user tapping the Refresh button.
     -- This is the single code path that initiates a network request for the
-    -- gallery index.
+    -- gallery index. Results live in self.gallery_index for the lifetime of
+    -- this modal only — nothing is persisted to disk.
     self.refreshGallery = function()
         if self.gallery_loading then return end
         local Gallery = require("preset_gallery")
@@ -95,7 +87,6 @@ function PresetManagerModal.show(bookends)
         if self.tab ~= tab then
             self.tab = tab
             self.page = 1
-            if tab == "gallery" then self.loadCachedGallery() end
             self.rebuild()
         end
     end
@@ -1042,25 +1033,13 @@ function PresetManagerModal._renderGalleryRows(self, vg, width, row_height, font
     if self.gallery_loading then
         status_text = _("Refreshing…")
     elseif not online then
-        status_text = _("Offline — cached presets only")
+        status_text = _("Offline — connect to refresh")
     elseif self.gallery_error then
-        status_text = _("Refresh failed — showing cached data")
+        status_text = _("Refresh failed — tap Refresh to retry")
+    elseif self.gallery_index and self.gallery_index.presets then
+        status_text = ""
     else
-        local ts = Gallery.getCacheTimestamp()
-        if ts then
-            local mins = math.max(0, math.floor((os.time() - ts) / 60))
-            if mins < 1 then
-                status_text = _("Updated just now")
-            elseif mins < 60 then
-                status_text = T(_("Updated %1 min ago"), mins)
-            elseif mins < 60 * 24 then
-                status_text = T(_("Updated %1h ago"), math.floor(mins / 60))
-            else
-                status_text = T(_("Updated %1d ago"), math.floor(mins / (60 * 24)))
-            end
-        else
-            status_text = _("Not downloaded yet")
-        end
+        status_text = _("Tap Refresh to load the gallery")
     end
 
     -- Card-style Refresh pill. Matches the preset cards (thin border, default
@@ -1122,30 +1101,10 @@ function PresetManagerModal._renderGalleryRows(self, vg, width, row_height, font
     })
     table.insert(vg, VerticalSpan:new{ width = Screen:scaleBySize(8) })
 
-    -- Empty state: no cached index yet. Prompt the user to refresh.
+    -- Empty state: pad the body so the modal's height stays consistent with
+    -- a populated list. The status strip above already explains what to do.
     if not self.gallery_index or not self.gallery_index.presets then
-        local msg
-        if self.gallery_loading then
-            msg = _("Loading gallery…")
-        elseif not online then
-            msg = _("Gallery requires an internet connection. Connect to wifi and tap Refresh.")
-        elseif self.gallery_error then
-            msg = _("Gallery data is temporarily unavailable. Tap Refresh to try again.")
-        else
-            msg = _("Tap Refresh to download the preset gallery.")
-        end
-        table.insert(vg, LeftContainer:new{
-            dimen = Geom:new{ w = width, h = row_height * 2 },
-            HorizontalGroup:new{
-                HorizontalSpan:new{ width = left_pad },
-                TextWidget:new{
-                    text = msg,
-                    face = Font:getFace("cfont", 15),
-                    max_width = width - 2 * left_pad,
-                    fgcolor = Blitbuffer.COLOR_BLACK,
-                },
-            },
-        })
+        table.insert(vg, VerticalSpan:new{ width = row_height * 5 })
         return
     end
 
@@ -1224,7 +1183,7 @@ function PresetManagerModal._previewGallery(self, entry)
         function(data, err)
             if not data then
                 if err == "offline" then
-                    Notification:notify(T(_("Offline — '%1' hasn't been downloaded yet."), entry.name))
+                    Notification:notify(_("Offline — connect to preview this preset."))
                 else
                     Notification:notify(T(_("Couldn't download '%1'."), entry.name))
                 end
