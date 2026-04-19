@@ -574,6 +574,10 @@ function PresetManagerModal._openOverflow(self, preset_entry)
                 UIManager:close(dlg)
                 PresetManagerModal._duplicate(self, entry)
             end }},
+            {{ text = _("Submit to gallery…"), callback = function()
+                UIManager:close(dlg)
+                PresetManagerModal._submitToGallery(self, entry)
+            end }},
             {{ text = _("Delete"), callback = function()
                 UIManager:close(dlg)
                 PresetManagerModal._delete(self, entry)
@@ -667,6 +671,68 @@ function PresetManagerModal._duplicate(self, entry)
     }
     UIManager:show(dlg)
     dlg:onShowKeyboard()
+end
+
+--- Slugify a preset name into a gallery-compatible slug.
+local function slugify(s)
+    return (s:lower():gsub("[^%w]", "-"):gsub("%-+", "-"):gsub("^%-", ""):gsub("%-$", ""))
+end
+
+--- Re-serialize a preset as a self-contained .lua file (what the Worker expects).
+local function serializePresetForSubmission(preset_entry)
+    local PresetManager = require("preset_manager")
+    local header = "-- Bookends preset: " .. (preset_entry.preset.name or preset_entry.name) .. "\n"
+    return header .. "return " .. PresetManager.serializeTable(preset_entry.preset) .. "\n"
+end
+
+function PresetManagerModal._submitToGallery(self, entry)
+    local data = entry.preset
+    local missing = {}
+    if not data.description or data.description == "" then table.insert(missing, _("description")) end
+    if not data.author or data.author == "" then table.insert(missing, _("author")) end
+    if #missing > 0 then
+        UIManager:show(ConfirmBox:new{
+            text = T(_("This preset is missing %1 — add via Edit description / the preset file before submitting."),
+                     table.concat(missing, ", ")),
+            ok_text = _("OK"),
+            cancel_text = _("Cancel"),
+            ok_callback = function() end,
+        })
+        return
+    end
+
+    local slug = slugify(data.name or entry.name)
+    local preset_lua = serializePresetForSubmission(entry)
+
+    local confirm
+    confirm = ConfirmBox:new{
+        text = T(_("Submit '%1' by %2 to the gallery? A pull request will be opened for review."),
+                 data.name, data.author),
+        ok_text = _("Submit"),
+        cancel_text = _("Cancel"),
+        ok_callback = function()
+            Notification:notify(_("Submitting to gallery…"))
+            local Gallery = require("preset_gallery")
+            local submission = {
+                slug        = slug,
+                name        = data.name,
+                author      = data.author,
+                description = data.description,
+                preset_lua  = preset_lua,
+            }
+            Gallery.submitPreset(submission, "KOReader-Bookends", function(result, err)
+                if result then
+                    UIManager:show(require("ui/widget/infomessage"):new{
+                        text = T(_("Thanks! Your submission is PR #%1.\n\nThe maintainer will review it before it appears in the Gallery."),
+                                 tostring(result.pr_number or "?")),
+                    })
+                else
+                    Notification:notify(T(_("Submission failed: %1"), tostring(err or "unknown")))
+                end
+            end)
+        end,
+    }
+    UIManager:show(confirm)
 end
 
 function PresetManagerModal._delete(self, entry)
