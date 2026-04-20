@@ -1076,6 +1076,17 @@ function PresetManagerModal._delete(self, entry)
                 else
                     self.bookends:setActivePresetFilename(nil)
                 end
+            elseif self.previewing then
+                -- We deleted a preset we were previewing, but it wasn't the
+                -- active preset. Positions in RAM still hold the preview's
+                -- content; without re-applying the active preset, the next
+                -- autosave would dump that preview state into the active
+                -- preset's file (previously observed: 'Wow' content ending
+                -- up in Basic bookends after the previewed Wow was deleted).
+                local active = self.bookends:getActivePresetFilename()
+                if active then
+                    pcall(self.bookends.applyPresetFile, self.bookends, active)
+                end
             end
             self.previewing = nil
             self.bookends._previewing = false
