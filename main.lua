@@ -1605,13 +1605,29 @@ function Bookends:showFontPicker(current_face, on_select, default_face)
             families[name] = entry
         end
     end
+    -- Filter out fonts that freetype can't actually load. Users with older
+    -- CFF-format OTFs or damaged font files would otherwise see them in the
+    -- picker, select one, and end up with a crashing overlay. Validation
+    -- calls Font:getFace (which caches); subsequent picker opens are fast.
+    -- Skipped fonts are tracked so we can report the count in the footer.
+    local skipped_count = 0
     for _, entry in pairs(families) do
-        table.insert(fonts, { file = entry.file, name = entry.name, display = entry.name })
-        font_display_names[entry.file] = entry.name
+        local ok_face = Font:getFace(entry.file, 12)
+        if ok_face then
+            table.insert(fonts, { file = entry.file, name = entry.name, display = entry.name })
+            font_display_names[entry.file] = entry.name
+        else
+            skipped_count = skipped_count + 1
+        end
     end
     table.sort(fonts, function(a, b)
         return ffiUtil.strcoll(a.name, b.name)
     end)
+    if skipped_count > 0 then
+        require("logger").info(string.format(
+            "bookends: font picker skipped %d font(s) that freetype couldn't load",
+            skipped_count))
+    end
 
     -- Prepend family entries (page 1 only, before the specific-font list)
     local family_entries = {}
