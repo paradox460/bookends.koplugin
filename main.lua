@@ -20,6 +20,8 @@ do
     end
 end
 
+local Blitbuffer = require("ffi/blitbuffer")
+local Geom = require("ui/geometry")
 local Config = require("bookends_config")
 local ConfirmBox = require("ui/widget/confirmbox")
 local DialogHelpers = require("bookends_dialog_helpers")
@@ -81,6 +83,60 @@ local Bookends = WidgetContainer:extend{
     name = "bookends",
     is_doc_only = true,
 }
+
+-- Toast overlay that paints a page-coloured halo behind ReaderFlipping's
+-- top-left indicator (CRe re-render, page-flip, highlight-mode icons) and
+-- re-paints the icon on top. Lives on UIManager._window_stack so it paints
+-- after every ReaderView pass — the in-ReaderView attempt was clobbered by
+-- whichever view module happened to iterate last. invisible=true keeps it
+-- out of getTopmostVisibleWidget so it can't block ReaderRolling's reload
+-- gate (the bug we fixed by gutting the old dogear overlay).
+local FlippingHaloOverlay = WidgetContainer:extend{
+    name = "BookendsFlippingHalo",
+    toast = true,
+    invisible = true,
+    covers_fullscreen = false,
+}
+
+function FlippingHaloOverlay:init()
+    self.dimen = Geom:new{ x = 0, y = 0, w = 0, h = 0 }
+end
+
+function FlippingHaloOverlay:paintTo(bb, x, y)
+    local b = self._bookends
+    if not b or not b.enabled then return end
+    if not b:_flippingWillPaintIcon() then return end
+    -- Suppress if the topmost widget above ReaderUI has a dimen that covers
+    -- the icon corner (TouchMenu, TOC, etc). Small dialogs with centred
+    -- dimens don't reach the corner, so they pass. ButtonDialog does this
+    -- correctly on its own; widgets wrapping a CenterContainer need to
+    -- override paintTo to report the inner frame's dimen (see the preset
+    -- library modal).
+    local icon_size = Screen:scaleBySize(32)
+    local top = UIManager:getTopmostVisibleWidget()
+    if top and top.name ~= "ReaderUI" and top.dimen then
+        local d, px, py = top.dimen, x + icon_size / 2, y + icon_size / 2
+        if px >= d.x and px < d.x + d.w and py >= d.y and py < d.y + d.h then
+            return
+        end
+    end
+
+    local view = b.ui.view
+    local flipping = view.flipping
+    local icon_size = Screen:scaleBySize(32)
+    local halo_pad = Screen:scaleBySize(6)
+    local halo_radius = math.floor(icon_size / 2) + halo_pad
+    local halo_color = view.page_bgcolor or Blitbuffer.COLOR_WHITE
+    local border_color = Blitbuffer.gray(0.65) -- medium-light grey
+    local border_width = math.max(1, Screen:scaleBySize(1))
+    local cx = x + math.floor(icon_size / 2)
+    local cy = y + math.floor(icon_size / 2)
+    -- Filled halo in page colour, then a thin grey outline to keep it
+    -- reading as an intentional shape where it crops nearby content.
+    bb:paintCircle(cx, cy, halo_radius, halo_color, halo_radius)
+    bb:paintCircle(cx, cy, halo_radius, border_color, border_width)
+    flipping:paintTo(bb, x, y)
+end
 
 -- Position keys and their properties
 Bookends.POSITIONS = {
@@ -184,6 +240,19 @@ function Bookends:init()
 
     -- Background update check on book open (opt-in only, throttled to once/hour)
     self:backgroundUpdateCheck()
+
+    -- Register the flipping-halo toast overlay (see FlippingHaloOverlay above).
+    if not self._flipping_halo then
+        self._flipping_halo = FlippingHaloOverlay:new{ _bookends = self }
+        UIManager:show(self._flipping_halo)
+    end
+end
+
+function Bookends:onCloseDocument()
+    if self._flipping_halo then
+        UIManager:close(self._flipping_halo)
+        self._flipping_halo = nil
+    end
 end
 
 function Bookends:onDispatcherRegisterActions()
@@ -858,6 +927,26 @@ function Bookends:onResume()
     self:backgroundUpdateCheck()
 end
 
+-- Mirror ReaderFlipping:paintTo's visibility conditions so we know whether
+-- an icon would be drawn at this frame. Used to gate the halo repaint below.
+function Bookends:_flippingWillPaintIcon()
+    local ui = self.ui
+    local view = ui and ui.view
+    if not view or not view.flipping then return false end
+    if ui.paging and view.flipping_visible then return true end
+    if ui.highlight then
+        if ui.highlight.select_mode then return true end
+        if ui.highlight.long_hold_reached then return true end
+    end
+    if ui.rolling and ui.rolling.rendering_state then
+        local f = view.flipping
+        if f.getRollingRenderingStateIconWidget then
+            return f:getRollingRenderingStateIconWidget() ~= nil
+        end
+    end
+    return false
+end
+
 function Bookends:paintTo(bb, x, y)
     if not self.enabled then return end
     local ok, err = xpcall(self._paintToInner, debug.traceback, self, bb, x, y)
@@ -1401,10 +1490,11 @@ function Bookends:_paintToInner(bb, x, y)
         self.position_cache[key] = text
     end
 
-    -- Repaint the bookmark dog-ear on top of Bookends so it isn't hidden
-    if self.ui.view.dogear_visible and self.ui.view.dogear then
-        self.ui.view.dogear:paintTo(bb, x, y)
-    end
+    -- Dogear and flipping-icon halo both paint from toast overlays
+    -- registered on UIManager, above the ReaderView paint pipeline.
+    -- An in-paintTo repaint here would be lost if this function errored
+    -- partway through, which has happened (see font.lua paintTo traces),
+    -- and could also be clobbered by later view modules.
 
     self.dirty = false
     self:startRefreshTimer()

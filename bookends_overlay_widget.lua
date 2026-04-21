@@ -348,9 +348,13 @@ function OverlayWidget.buildTextWidget(text, line_configs, h_anchor, max_width, 
         return nil, 0, 0
     end
 
-    -- Get config for line i (fall back to last config if fewer configs than lines)
+    -- Get config for line i (fall back to last config if fewer configs than lines).
+    -- Last-ditch fallback uses cfont explicitly: TextWidget crashes in
+    -- font.lua's getAdjustedFace if face is nil, which has bitten us when
+    -- a user's configured font failed to load at freetype level.
     local function getConfig(i)
-        return line_configs[i] or line_configs[#line_configs] or { face = nil, bold = false }
+        return line_configs[i] or line_configs[#line_configs]
+            or { face = Font:getFace("cfont"), bold = false }
     end
 
     if #lines == 1 then
@@ -444,7 +448,8 @@ function OverlayWidget.measureTextWidth(text, line_configs)
     local i = 0
     for line in text:gmatch("([^\n]+)") do
         i = i + 1
-        local cfg = line_configs[i] or line_configs[#line_configs] or { face = nil, bold = false }
+        local cfg = line_configs[i] or line_configs[#line_configs]
+            or { face = Font:getFace("cfont"), bold = false }
         -- For bar lines, measure only the text portions (strip placeholder)
         local measure_text = line
         if cfg.bar then

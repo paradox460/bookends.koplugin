@@ -421,6 +421,16 @@ function PresetManagerModal._rebuild(self)
         dimen = Screen:getSize(),
         frame,
     }
+    -- Report the visible frame's dimen after paint, not the full-screen
+    -- CenterContainer size. Matches ButtonDialog:paintTo. This lets
+    -- overlays gated on the topmost widget's dimen (e.g. Bookends'
+    -- FlippingHaloOverlay and the dogear userpatch) correctly see that
+    -- this modal doesn't cover the screen corners.
+    local orig_wc_paintTo = wc.paintTo
+    function wc:paintTo(...)
+        orig_wc_paintTo(self, ...)
+        self.dimen = frame.dimen
+    end
     self.modal_widget = wc
     UIManager:show(wc)
     -- Force a full-screen flash so e-ink repaints cleanly when a dialog above
