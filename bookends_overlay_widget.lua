@@ -911,6 +911,7 @@ function OverlayWidget.paintProgressBar(bb, x, y, w, h, fraction, ticks, style, 
     local tick_height_pct = colors and colors.tick_height_pct or 100
     local custom_border = colors and colors.border
     local custom_invert = colors and colors.invert
+    local custom_metro_fill = colors and colors.metro_fill
 
     -- Resolve custom color: false → nil (transparent/skip), nil → default, else custom.
     -- Must use type() checks to avoid triggering Blitbuffer's __eq metamethod.
