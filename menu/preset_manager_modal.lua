@@ -26,6 +26,7 @@ local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
+local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local util = require("util")
 local _ = require("bookends_i18n").gettext
 local T = require("ffi/util").template
@@ -421,18 +422,20 @@ function PresetManagerModal._rebuild(self)
         dimen = Screen:getSize(),
         frame,
     }
-    -- Report the visible frame's dimen after paint, not the full-screen
-    -- CenterContainer size. Matches ButtonDialog:paintTo. This lets
-    -- overlays gated on the topmost widget's dimen (e.g. Bookends'
-    -- FlippingHaloOverlay and the dogear userpatch) correctly see that
-    -- this modal doesn't cover the screen corners.
-    local orig_wc_paintTo = wc.paintTo
-    function wc:paintTo(...)
-        orig_wc_paintTo(self, ...)
+    -- Outer shell publishes the visible frame's rect to external observers
+    -- (Bookends' FlippingHaloOverlay suppression, the dogear userpatch) via
+    -- its own dimen, while wc keeps dimen = Screen:getSize() — that field
+    -- is what CenterContainer:paintTo uses to compute its centring offset,
+    -- so overwriting it pins the modal to (0, 0) on the second repaint.
+    -- Matches ButtonDialog, which hangs `self.dimen = movable.dimen` on its
+    -- outer FocusManager, not on the inner CenterContainer.
+    local shell = WidgetContainer:new{ dimen = Screen:getSize(), wc }
+    function shell:paintTo(bb, x, y)
+        wc:paintTo(bb, x, y)
         self.dimen = frame.dimen
     end
-    self.modal_widget = wc
-    UIManager:show(wc)
+    self.modal_widget = shell
+    UIManager:show(shell)
     -- Force a full-screen flash so e-ink repaints cleanly when a dialog above
     -- us closes and we rebuild (otherwise the dialog's last frame can ghost).
     UIManager:setDirty("all", "flashui")
