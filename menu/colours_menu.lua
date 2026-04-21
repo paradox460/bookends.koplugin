@@ -61,19 +61,6 @@ function Bookends:_buildColorItems(bc, saveColors, is_per_bar)
         },
         {
             text_func = function()
-                return _("Metro track color") .. ": " .. pctLabel("track")
-            end,
-            keep_menu_open = true,
-            callback = function(touchmenu_instance)
-                colorNudge(_("Metro track color (% black)"), "track", 75, touchmenu_instance)
-            end,
-            hold_callback = function(touchmenu_instance)
-                bc.track = nil; saveColors()
-                if touchmenu_instance then touchmenu_instance:updateItems() end
-            end,
-        },
-        {
-            text_func = function()
                 return _("Metro read color") .. ": " .. pctLabel("metro_fill")
             end,
             keep_menu_open = true,
@@ -82,6 +69,19 @@ function Bookends:_buildColorItems(bc, saveColors, is_per_bar)
             end,
             hold_callback = function(touchmenu_instance)
                 bc.metro_fill = nil; saveColors()
+                if touchmenu_instance then touchmenu_instance:updateItems() end
+            end,
+        },
+        {
+            text_func = function()
+                return _("Metro track color") .. ": " .. pctLabel("track")
+            end,
+            keep_menu_open = true,
+            callback = function(touchmenu_instance)
+                colorNudge(_("Metro track color (% black)"), "track", 75, touchmenu_instance)
+            end,
+            hold_callback = function(touchmenu_instance)
+                bc.track = nil; saveColors()
                 if touchmenu_instance then touchmenu_instance:updateItems() end
             end,
         },
