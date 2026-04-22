@@ -1,6 +1,8 @@
 --- Colour-related menus: text/symbol colours and bar colours/ticks.
 -- Attached onto the Bookends class by main.lua on plugin load.
 local _ = require("bookends_i18n").gettext
+local Device = require("device")
+local Colour = require("bookends_colour")
 
 return function(Bookends)
 
@@ -10,10 +12,45 @@ return function(Bookends)
 --- bar_colors.border_thickness as its default instead of the hard-coded 1px.
 function Bookends:_buildColorItems(bc, saveColors, is_per_bar)
     local function colorNudge(title, field, default_pct, touchmenu_instance)
-        local current = bc[field] and math.floor((0xFF - bc[field]) * 100 / 0xFF + 0.5) or default_pct
+        if Device:screen():isColorEnabled() then
+            -- Colour device: show HSV picker. Hex-shape takes priority; if
+            -- the field still holds a legacy raw byte or {grey=N}, render
+            -- the equivalent greyscale hex so the picker opens on the
+            -- user's currently-stored value.
+            local v = bc[field]
+            local current_hex
+            if type(v) == "table" and v.hex then
+                current_hex = v.hex
+            elseif type(v) == "table" and v.grey then
+                local g = string.format("%02X", v.grey)
+                current_hex = "#" .. g .. g .. g
+            elseif type(v) == "number" then
+                local g = string.format("%02X", v)
+                current_hex = "#" .. g .. g .. g
+            end
+            local default_hex = Colour.defaultHexFor(field)
+            self:showColourPicker(title, current_hex, default_hex,
+                function(new_hex)
+                    bc[field] = { hex = new_hex }
+                    saveColors()
+                end,
+                function()
+                    bc[field] = nil
+                    saveColors()
+                end,
+                touchmenu_instance)
+            return
+        end
+        -- Greyscale device: existing nudge path, unchanged.
+        local v = bc[field]
+        local byte
+        if type(v) == "table" and v.grey then byte = v.grey
+        elseif type(v) == "number" then byte = v
+        end
+        local current = byte and math.floor((0xFF - byte) * 100 / 0xFF + 0.5) or default_pct
         self:showNudgeDialog(title, current, 0, 100, default_pct, "%",
             function(val)
-                bc[field] = 0xFF - math.floor(val * 0xFF / 100 + 0.5)
+                bc[field] = { grey = 0xFF - math.floor(val * 0xFF / 100 + 0.5) }
                 saveColors()
             end,
             nil, nil, nil, touchmenu_instance,
@@ -24,8 +61,15 @@ function Bookends:_buildColorItems(bc, saveColors, is_per_bar)
     end
 
     local function pctLabel(field)
-        if bc[field] then
-            local pct = math.floor((0xFF - bc[field]) * 100 / 0xFF + 0.5)
+        local v = bc[field]
+        if not v then return _("default") end
+        if type(v) == "table" and v.hex then return v.hex end
+        local byte
+        if type(v) == "table" and v.grey then byte = v.grey
+        elseif type(v) == "number" then byte = v
+        end
+        if byte then
+            local pct = math.floor((0xFF - byte) * 100 / 0xFF + 0.5)
             if pct == 0 then return _("transparent") end
             return pct .. "%"
         end
