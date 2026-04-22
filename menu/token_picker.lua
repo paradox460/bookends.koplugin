@@ -94,6 +94,7 @@ Bookends.CONDITIONAL_CATALOG = {
         { "[if:not series]Standalone[/if]", _("Books not in a series") },
         { "[if:chapter_title_2]%C2[else]%C1[/if]", _("Sub-chapter title when present") },
         { "[if:chapters>20]Long read[/if]", _("Books with many chapters") },
+        { "%T[if:chapter_title_1!=@title] • %C1[/if]", _("Top level chapter when title differs from book title") },
     }},
     { _("Reference"), {
         { "[if:wifi=on]...[/if]", _("wifi — on / off") },
@@ -171,7 +172,8 @@ function Bookends:showTokenPicker(on_select)
             local cond_items = {
                 { text = _("[if:key=value]show when true[/if]"), dim = true, callback = dim },
                 { text = _("[if:key=value]if true[else]if false[/if]"), dim = true, callback = dim },
-                { text = _("Compare:  =  <  >     Boolean:  and  or  not  ( )"), dim = true, callback = dim },
+                { text = _("Compare:  =  !=  <  >     Boolean:  and  or  not  ( )"), dim = true, callback = dim },
+                { text = _("Use @key as value to compare two fields: chapter_title_1!=@title"), dim = true, callback = dim },
             }
             -- Append catalog items
             for _, item in ipairs(self:buildTokenItems(self.CONDITIONAL_CATALOG, on_select)) do

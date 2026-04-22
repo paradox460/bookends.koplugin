@@ -116,21 +116,37 @@ local function parseNumericValue(val)
 end
 
 --- Evaluate a single condition string against a state table.
--- Supports operators =, <, > for comparisons.
+-- Supports operators =, !=, <, > for comparisons.
+-- When the right-hand value starts with @, it is resolved as a state-table
+-- key reference (e.g. chapter_title_1=@title compares two state values).
 -- Without an operator, checks if the value is truthy (non-nil, non-empty, non-zero, not "off"/"no").
 local function evaluateCondition(cond_str, state)
-    -- Try operator: key=value, key<value, key>value
+    -- Try operator: key=value, key!=value, key<value, key>value
     -- Key pattern allows underscores ([%w_]+) to support names like book_pct.
-    local key, op, value = cond_str:match("^([%w_]+)([=<>])(.+)$")
+    -- Operator pattern matches =, !=, <, >.
+    local key, op, value = cond_str:match("^([%w_]+)(!=)(.+)$")
+    if not key then
+        key, op, value = cond_str:match("^([%w_]+)([=<>])(.+)$")
+    end
     if key and op and value then
         local state_val = state[key]
-        if state_val == nil then return false end
+        if state_val == nil then return op == "!=" end
+        -- Resolve @ref on the right-hand side: look up value from state table.
+        if value:sub(1, 1) == "@" then
+            local ref_key = value:sub(2)
+            value = state[ref_key]
+            if value == nil then value = "" end
+        end
         -- Try numeric comparison (supports HH:MM → minutes)
         local num_state = tonumber(state_val)
-        local num_val = parseNumericValue(value)
+        local num_val = parseNumericValue(tostring(value))
         if op == "=" then
             if num_state and num_val then return num_state == num_val end
-            return tostring(state_val) == value
+            return tostring(state_val) == tostring(value)
+        end
+        if op == "!=" then
+            if num_state and num_val then return num_state ~= num_val end
+            return tostring(state_val) ~= tostring(value)
         end
         if not num_state or not num_val then return false end
         if op == "<" then return num_state < num_val end
