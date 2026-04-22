@@ -663,7 +663,19 @@ function OverlayWidget.parseStyledSegments(text, base_bold, base_italic, base_up
                 -- Mismatched close — render entire line as plain text
                 return nil, false
             end
-        -- Check for opening colour tag [c=N] where N is 0-100
+        -- Check for opening hex colour tag [c=#RRGGBB]
+        elseif text:match("^%[c=#%x%x%x%x%x%x%]", pos) then
+            local hex, end_pos = text:match("^%[c=(#%x%x%x%x%x%x)()%]", pos)
+            if hex then
+                flushPending()
+                table.insert(color_stack, { hex = hex:upper() })
+                found_tags = true
+                pos = end_pos + 1  -- skip past the ']'
+            else
+                pending = pending .. text:sub(pos, pos)
+                pos = pos + 1
+            end
+        -- Check for opening colour tag [c=N] where N is 0-100 (greyscale percent)
         elseif text:match("^%[c=%d+%]", pos) then
             local val_str, end_pos = text:match("^%[c=(%d+)()%]", pos)
             if val_str then
@@ -759,7 +771,7 @@ function OverlayWidget.buildStyledLine(segments, cfg, available_w, max_width)
                 -- Resolve segment colour: BBCode [c] tag → global text_color → nil (book colour)
                 local seg_fgcolor = nil
                 if seg.color then
-                    seg_fgcolor = Blitbuffer.Color8(seg.color.grey)
+                    seg_fgcolor = resolveTextColor(seg.color)
                 elseif cfg.text_color then
                     seg_fgcolor = resolveTextColor(cfg.text_color)
                 end
