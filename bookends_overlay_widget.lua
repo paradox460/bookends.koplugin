@@ -693,14 +693,26 @@ function OverlayWidget.parseStyledSegments(text, base_bold, base_italic, base_up
                 -- Mismatched close — render entire line as plain text
                 return nil, false
             end
-        -- Check for opening hex colour tag [c=#RRGGBB]
-        elseif text:match("^%[c=#%x%x%x%x%x%x%]", pos) then
-            local hex, end_pos = text:match("^%[c=(#%x%x%x%x%x%x)()%]", pos)
-            if hex then
-                flushPending()
-                table.insert(color_stack, { hex = hex:upper() })
-                found_tags = true
-                pos = end_pos + 1  -- skip past the ']'
+        -- Check for opening hex colour tag [c=#RRGGBB] or short [c=#RGB].
+        -- Store the normalised long form on color_stack so downstream
+        -- consumers (parseColorValue, getting the segment colour) see a
+        -- single canonical shape regardless of which form the user typed.
+        elseif text:match("^%[c=#%x%x%x%x%x%x%]", pos) or text:match("^%[c=#%x%x%x%]", pos) then
+            local raw, end_pos = text:match("^%[c=(#%x%x%x%x%x%x)()%]", pos)
+            if not raw then
+                raw, end_pos = text:match("^%[c=(#%x%x%x)()%]", pos)
+            end
+            if raw then
+                local hex = require("bookends_colour").normaliseHex(raw)
+                if hex then
+                    flushPending()
+                    table.insert(color_stack, { hex = hex })
+                    found_tags = true
+                    pos = end_pos + 1  -- skip past the ']'
+                else
+                    pending = pending .. text:sub(pos, pos)
+                    pos = pos + 1
+                end
             else
                 pending = pending .. text:sub(pos, pos)
                 pos = pos + 1

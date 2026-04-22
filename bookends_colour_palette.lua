@@ -303,13 +303,14 @@ end
 function ColourPaletteWidget:onHexSubmit()
     local txt = self.hex_input:getText()
     if not txt then return end
-    local hex = txt:match("^%s*(#?%x%x%x%x%x%x)%s*$")
+    -- Accept #RRGGBB or short #RGB (leading # optional, whitespace tolerated).
+    -- Store the normalised #RRGGBB form so presets on disk are canonical.
+    local Colour = require("bookends_colour")
+    local hex = Colour.normaliseHex(txt)
     if not hex then
-        Notification:notify(_("Invalid hex colour (use #RRGGBB)"))
+        Notification:notify(_("Invalid hex colour (use #RGB or #RRGGBB)"))
         return
     end
-    if hex:sub(1, 1) ~= "#" then hex = "#" .. hex end
-    hex = hex:upper()
     self.selected_hex = hex
     if self.apply_callback then self.apply_callback(hex) end
     self:update()

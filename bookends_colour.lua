@@ -45,6 +45,22 @@ local DEFAULT_HEX = {
 
 function Colour.defaultHexFor(field) return DEFAULT_HEX[field] end
 
+-- Accepts "#RGB", "#RRGGBB", or the same forms without the leading #.
+-- Returns the canonical "#RRGGBB" upper-cased form, or nil if malformed.
+-- CSS-short form expands per the usual rule: "#F0A" → "#FF00AA".
+function Colour.normaliseHex(raw)
+    if type(raw) ~= "string" then return nil end
+    local s = raw:match("^%s*(.-)%s*$")  -- trim
+    if s:sub(1, 1) == "#" then s = s:sub(2) end
+    if #s == 3 and s:match("^%x%x%x$") then
+        local r, g, b = s:sub(1, 1), s:sub(2, 2), s:sub(3, 3)
+        return ("#" .. r .. r .. g .. g .. b .. b):upper()
+    elseif #s == 6 and s:match("^%x%x%x%x%x%x$") then
+        return ("#" .. s):upper()
+    end
+    return nil
+end
+
 --- Parse a stored colour value into a Blitbuffer colour object.
 --- Returns nil if v is nil, false if v is false (transparent).
 function Colour.parseColorValue(v, is_color_enabled)
@@ -65,15 +81,16 @@ function Colour.parseColorValue(v, is_color_enabled)
     if t == "boolean" then return false end
 
     if type(v) == "table" and v.hex then
-        local key = v.hex .. (is_color_enabled and ":c" or ":g")
+        -- Normalise to #RRGGBB so short-form ("#F00") and long-form ("#FF0000")
+        -- hit the same cache entry.
+        local hex = Colour.normaliseHex(v.hex)
+        if not hex then return nil end
+        local key = hex .. (is_color_enabled and ":c" or ":g")
         local cached = _hex_cache[key]
         if cached then return cached end
-        local hex = v.hex
-        if hex:sub(1, 1) ~= "#" or #hex ~= 7 then return nil end
         local r = tonumber(hex:sub(2, 3), 16)
         local g = tonumber(hex:sub(4, 5), 16)
         local b = tonumber(hex:sub(6, 7), 16)
-        if not (r and g and b) then return nil end
         local out
         if is_color_enabled then
             out = Blitbuffer.ColorRGB32(r, g, b, 0xFF)
