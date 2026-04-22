@@ -866,6 +866,18 @@ function Bookends:onReaderFooterVisibilityChange()
 end
 function Bookends:onSetDimensions() self:markDirty() end
 
+--- KOReader broadcasts ColorRenderingUpdate when the user toggles colour
+--- rendering in Settings → Screen (screen_color_menu_table.lua, single
+--- broadcast site).  Flush the hex cache so the next paint reconstructs
+--- Blitbuffer values in the new mode, then mark the overlay dirty so it
+--- repaints.  The defensive auto-flush in parseColorValue is a belt-and-
+--- braces fallback in case the event fires before our handler is registered
+--- or a future KOReader refactor moves the broadcast site.
+function Bookends:onColorRenderingUpdate()
+    require("bookends_colour").flushCache()
+    self:markDirty()
+end
+
 -- Repaint after system events that change token values (battery, frontlight, etc.).
 -- These events don't trigger a ReaderView repaint on their own, so we need
 -- markDirty() to request one.  Use a nextTick to avoid interrupting the

@@ -26,6 +26,7 @@ local Blitbuffer = require("ffi/blitbuffer")
 local Colour = {}
 
 local _hex_cache = {}
+local _last_color_mode = nil  -- tracks last seen is_color_enabled for auto-flush
 
 -- Default hex for each field when the user taps "Default" in the picker.
 -- nil means "clear the setting entirely" (fall back to the field's own
@@ -47,6 +48,15 @@ function Colour.defaultHexFor(field) return DEFAULT_HEX[field] end
 --- Parse a stored colour value into a Blitbuffer colour object.
 --- Returns nil if v is nil, false if v is false (transparent).
 function Colour.parseColorValue(v, is_color_enabled)
+    -- Defensive auto-flush: if is_color_enabled changed since the last call,
+    -- cached Blitbuffer values from the old mode are stale — drop them.
+    -- Belt-and-braces against the onColorRenderingUpdate event firing late or
+    -- a future KOReader refactor moving the broadcast site.
+    if _last_color_mode ~= nil and _last_color_mode ~= is_color_enabled then
+        _hex_cache = {}
+    end
+    _last_color_mode = is_color_enabled
+
     if v == nil then return nil end
     if v == false then return false end
 
@@ -87,6 +97,7 @@ end
 
 function Colour.flushCache()
     _hex_cache = {}
+    _last_color_mode = nil  -- reset so next parseColorValue re-seeds the mode
 end
 
 return Colour
