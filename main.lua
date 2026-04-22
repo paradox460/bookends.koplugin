@@ -161,6 +161,7 @@ require("menu.position_menu")(Bookends)
 require("menu.progress_bar_menu")(Bookends)
 require("menu.token_picker")(Bookends)
 require("bookends_colour_palette").attach(Bookends)
+require("bookends_textwidget_patch")  -- TextWidget: paint ColorRGB32 fgcolor as true colour
 
 function Bookends:init()
     -- Install custom icons (chevron.down) into KOReader's user icons dir

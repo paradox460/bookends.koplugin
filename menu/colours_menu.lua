@@ -316,13 +316,37 @@ function Bookends:buildColoursMenu()
 end
 
 function Bookends:buildTextColourMenu()
-    -- Text/symbol colour always uses the greyscale nudge, even on colour
-    -- devices: KOReader's TextWidget only has a greyscale colour-blit path
-    -- (colorblitFrom, not colorblitFromRGB32 like TextBoxWidget), so a hex
-    -- text colour would render as its luminance on Kaleido anyway. Keep the
-    -- nudge until upstream TextWidget gains RGB32 dispatch.
     local function textColorNudge(field, title, default_label_suffix, touchmenu_instance)
         local stored = self.settings:readSetting(field)
+        if Screen:isColorEnabled() then
+            local original = stored  -- capture verbatim for revert
+            local current_hex
+            if stored and stored.hex then
+                current_hex = stored.hex
+            elseif stored and stored.grey then
+                local g = string.format("%02X", stored.grey)
+                current_hex = "#" .. g .. g .. g
+            end
+            self:showColourPicker(title, current_hex, Colour.defaultHexFor(field),
+                function(new_hex)
+                    self.settings:saveSetting(field, { hex = new_hex })
+                    self:markDirty()
+                end,
+                function()
+                    self.settings:delSetting(field)
+                    self:markDirty()
+                end,
+                function()
+                    if original == nil then
+                        self.settings:delSetting(field)
+                    else
+                        self.settings:saveSetting(field, original)
+                    end
+                    self:markDirty()
+                end,
+                touchmenu_instance)
+            return
+        end
         local byte = (stored and stored.grey) or nil
         local current = byte and math.floor((0xFF - byte) * 100 / 0xFF + 0.5) or 100
         self:showNudgeDialog(title, current, 0, 100, 100, "%",
