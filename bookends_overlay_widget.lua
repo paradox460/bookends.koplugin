@@ -408,7 +408,8 @@ function OverlayWidget.buildTextWidget(text, line_configs, h_anchor, max_width, 
         local cfg = getConfig(1)
         -- Try styled segments (BBCode tags or bar placeholder)
         local segments, has_tags = OverlayWidget.parseStyledSegments(
-            lines[1], cfg.bold, cfg.italic or false, cfg.uppercase)
+            lines[1], cfg.bold, cfg.italic or false, cfg.uppercase,
+            resolveTextColor(cfg.symbol_color))
         if segments then
             return OverlayWidget.buildStyledLine(segments, cfg, available_w or Screen:getWidth(), max_width)
         end
@@ -445,7 +446,8 @@ function OverlayWidget.buildTextWidget(text, line_configs, h_anchor, max_width, 
         local widget, w, h
         -- Try styled segments (BBCode tags or bar placeholder)
         local segments, has_tags = OverlayWidget.parseStyledSegments(
-            line, cfg.bold, cfg.italic or false, cfg.uppercase)
+            line, cfg.bold, cfg.italic or false, cfg.uppercase,
+            resolveTextColor(cfg.symbol_color))
         if segments then
             widget, w, h = OverlayWidget.buildStyledLine(segments, cfg, available_w or Screen:getWidth(), max_width)
         elseif cfg.bar then
@@ -582,15 +584,18 @@ end
 -- @param base_uppercase boolean: base uppercase state from line config
 -- @return table or nil: array of segments, or nil if no valid tags found
 -- @return boolean: true if tags were found and parsed
-function OverlayWidget.parseStyledSegments(text, base_bold, base_italic, base_uppercase)
-    -- Quick check: no tags present
-    if not text:find("%[") then
+function OverlayWidget.parseStyledSegments(text, base_bold, base_italic, base_uppercase, symbol_color)
+    -- Fast path: no BBCode tags AND no icon-colour to apply -> caller renders
+    -- the whole line as plain text with base style.  When symbol_color is set
+    -- we still walk the string so PUA icon glyphs can be emitted as their own
+    -- colour-bearing segments (see emitPua below).
+    if not text:find("%[") and not symbol_color then
         return nil, false
     end
 
     local segments = {}
     local stack = {}  -- style stack: each entry is "b", "i", or "u"
-    local color_stack = {}  -- color stack: each entry is a {grey=N} table
+    local color_stack = {}  -- color stack: each entry is a {grey=N} or {hex=H} table
     local pos = 1
     local pending = ""  -- accumulates text between tags
     local found_tags = false
@@ -624,6 +629,27 @@ function OverlayWidget.parseStyledSegments(text, base_bold, base_italic, base_up
         if clr then seg.color = clr end
         table.insert(segments, seg)
         pending = ""
+    end
+
+    -- Emit a single PUA (Nerd Font / FontAwesome icon) glyph as its own
+    -- segment, using either the active user-authored [c=...] colour or the
+    -- global icon colour (symbol_color). This is the replacement for the
+    -- old Tokens.expand [c=…]PUA[/c] auto-wrap: by deciding per-segment at
+    -- parse time, no ghost tags exist in any intermediate string that might
+    -- be rendered if the line has an unclosed user tag and the parser
+    -- falls back to plain-text.
+    local function emitPua(pua)
+        flushPending()
+        local bold, italic, uppercase = currentStyle()
+        local seg = { text = pua, bold = bold, italic = italic, uppercase = uppercase }
+        local clr = currentColor()
+        if clr then
+            seg.color = clr
+        elseif symbol_color then
+            seg.color = symbol_color
+            found_tags = true  -- parser applied meaningful colouring, not just plain text
+        end
+        table.insert(segments, seg)
     end
 
     local len = #text
@@ -695,8 +721,27 @@ function OverlayWidget.parseStyledSegments(text, base_bold, base_italic, base_up
                 pos = pos + 1
             end
         else
-            pending = pending .. text:sub(pos, pos)
-            pos = pos + 1
+            -- PUA icon glyph? 0xEE[80-BF][80-BF] covers U+E000-U+EFFF;
+            -- 0xEF[80-A3][80-BF] covers U+F000-U+F8FF (Nerd Fonts land
+            -- in both ranges, FontAwesome sits in the second). If one is
+            -- found AND we're not already inside a user-authored [c=...],
+            -- emit it as its own coloured segment so the icon colour
+            -- applies without needing to exist as a [c=...] tag in the
+            -- expanded line.
+            local b1 = text:byte(pos)
+            local pua
+            if b1 == 0xEE then
+                pua = text:match("^\xEE[\x80-\xBF][\x80-\xBF]", pos)
+            elseif b1 == 0xEF then
+                pua = text:match("^\xEF[\x80-\xA3][\x80-\xBF]", pos)
+            end
+            if pua then
+                emitPua(pua)
+                pos = pos + 3
+            else
+                pending = pending .. text:sub(pos, pos)
+                pos = pos + 1
+            end
         end
     end
 

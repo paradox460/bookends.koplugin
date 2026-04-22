@@ -1098,64 +1098,13 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     -- These are icon font glyphs (Nerd Fonts, FontAwesome) — never regular text.
     -- Detection is by UTF-8 byte pattern: 0xEE xx xx = U+E000-U+EFFF,
     -- 0xEF [0x80-0xA3] xx = U+F000-U+F8FF.
-    if symbol_color then
-        local open_tag
-        if symbol_color.hex then
-            open_tag = "[c=" .. symbol_color.hex .. "]"
-        elseif symbol_color.grey then
-            local pct = math.floor((0xFF - symbol_color.grey) * 100 / 0xFF + 0.5)
-            open_tag = "[c=" .. pct .. "]"
-        end
-        if open_tag then
-            -- Walk the expanded string, tracking user-authored [c=...] depth.
-            -- Wrap PUA glyphs in open_tag/[/c] only when depth == 0 so a user's
-            -- inline [c=#hex]%W[/c] overrides the global icon colour rather
-            -- than losing to a nested auto-wrap.
-            local out = {}
-            local depth = 0
-            local i = 1
-            local n = #result
-            while i <= n do
-                local open_hex = result:match("^%[c=#%x%x%x%x%x%x%]", i)
-                local open_pct = result:match("^%[c=%d+%]", i)
-                local close_c = result:match("^%[/c%]", i)
-                if open_hex then
-                    out[#out + 1] = open_hex
-                    i = i + #open_hex
-                    depth = depth + 1
-                elseif open_pct then
-                    out[#out + 1] = open_pct
-                    i = i + #open_pct
-                    depth = depth + 1
-                elseif close_c then
-                    out[#out + 1] = close_c
-                    i = i + #close_c
-                    depth = math.max(0, depth - 1)
-                else
-                    local b1 = result:byte(i)
-                    local pua
-                    if b1 == 0xEE then
-                        pua = result:match("^\xEE[\x80-\xBF][\x80-\xBF]", i)
-                    elseif b1 == 0xEF then
-                        pua = result:match("^\xEF[\x80-\xA3][\x80-\xBF]", i)
-                    end
-                    if pua and depth == 0 then
-                        out[#out + 1] = open_tag
-                        out[#out + 1] = pua
-                        out[#out + 1] = "[/c]"
-                        i = i + #pua
-                    elseif pua then
-                        out[#out + 1] = pua
-                        i = i + #pua
-                    else
-                        out[#out + 1] = result:sub(i, i)
-                        i = i + 1
-                    end
-                end
-            end
-            result = table.concat(out)
-        end
-    end
+    -- Icon colour for PUA glyphs is applied at parse time by the overlay
+    -- widget (see OverlayWidget.parseStyledSegments' emitPua path) — this
+    -- function no longer injects [c=…]PUA[/c] wraps, so mid-edit unclosed
+    -- user tags can't cause ghost auto-wrap tags to appear in the fallback
+    -- plain-text rendering. `symbol_color` is still accepted in the
+    -- signature for caller compatibility, but it's now ignored here.
+    local _ignored_symbol_color = symbol_color
 
     -- A line with a bar token is never considered empty
     local is_empty = has_token and all_empty and not bar_info

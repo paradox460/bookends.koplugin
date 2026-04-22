@@ -1304,6 +1304,7 @@ function Bookends:_paintToInner(bb, x, y)
             cfg.h_nudge = (pos_settings.line_h_nudge and pos_settings.line_h_nudge[i]) or 0
             cfg.uppercase = (pos_settings.line_uppercase and pos_settings.line_uppercase[i]) or false
             cfg.text_color = text_color
+            cfg.symbol_color = symbol_color
             -- Bar data (keyed by expanded line index, same order as line_configs)
             local expanded_idx = #line_configs + 1
             if bar_data[key] and bar_data[key][expanded_idx] then
