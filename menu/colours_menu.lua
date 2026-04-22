@@ -350,7 +350,11 @@ function Bookends:buildTextColourMenu()
 
     local function textPctLabel()
         local text_color = self.settings:readSetting("text_color")
-        if text_color then
+        if not text_color then
+            return _("default") .. " (" .. _("book") .. ")"
+        end
+        if text_color.hex then return text_color.hex end
+        if text_color.grey then
             local pct = math.floor((0xFF - text_color.grey) * 100 / 0xFF + 0.5)
             if pct == 0 then return _("transparent") end
             return pct .. "%"
@@ -360,7 +364,11 @@ function Bookends:buildTextColourMenu()
 
     local function symbolPctLabel()
         local symbol_color = self.settings:readSetting("symbol_color")
-        if symbol_color then
+        if not symbol_color then
+            return _("default") .. " (" .. _("text") .. ")"
+        end
+        if symbol_color.hex then return symbol_color.hex end
+        if symbol_color.grey then
             local pct = math.floor((0xFF - symbol_color.grey) * 100 / 0xFF + 0.5)
             if pct == 0 then return _("transparent") end
             return pct .. "%"
