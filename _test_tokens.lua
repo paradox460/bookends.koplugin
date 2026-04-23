@@ -463,5 +463,33 @@ test("series: custom layout '%series_name, book %series_num'", function()
     eq(r, "Foundation, book 1")
 end)
 
+-- ============================================================================
+-- legacy_literal flag: skip alias rewrite for live-preview behaviour
+-- ============================================================================
+test("legacy_literal: %A stays literal in preview", function()
+    local r = Tokens.expandPreview("%A", stubUiForExpand(), nil, nil, 2, nil,
+        { legacy_literal = true })
+    eq(r, "%A")
+end)
+
+test("legacy_literal: %author still resolves in preview", function()
+    local r = Tokens.expandPreview("%author", stubUiForExpand(), nil, nil, 2, nil,
+        { legacy_literal = true })
+    eq(r, "[author]")  -- preview-mode label
+end)
+
+test("legacy_literal: default (no opts) keeps rewriting", function()
+    local r = Tokens.expandPreview("%A", stubUiForExpand(), nil, nil, 2, nil)
+    eq(r, "[author]")
+end)
+
+test("legacy_literal: [if:chapters>10] keeps legacy key literal in preview", function()
+    -- In preview mode, conditionals are bypassed (fast-path).
+    -- With legacy_literal, the legacy predicate body passes through untouched.
+    local r = Tokens.expandPreview("[if:chapters>10]X[/if]",
+        stubUiForExpand(), nil, nil, 2, nil, { legacy_literal = true })
+    assert(r:find("%[if:chapters>10%]"), "expected legacy predicate preserved: " .. r)
+end)
+
 io.write(string.format("\n%d passed, %d failed\n", pass, fail))
 os.exit(fail == 0 and 0 or 1)

@@ -587,7 +587,8 @@ function Tokens.canonicaliseLegacy(format_str)
     return s
 end
 
-function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, preview_mode, tick_width_multiplier, symbol_color, paint_ctx)
+function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, preview_mode, tick_width_multiplier, symbol_color, paint_ctx, opts)
+    opts = opts or {}
     -- Fast path: no tokens or conditionals
     if not format_str:find("%%") and not format_str:find("%[if:") then
         return format_str
@@ -595,9 +596,11 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
 
     -- v5 alias pass: rewrite legacy %X tokens to v5 names so all downstream
     -- processing uses a single vocabulary. Gallery presets and user-authored
-    -- legacy strings render identically. Task 11 will add an opts flag to skip
-    -- this pass for the line-editor live preview.
-    format_str = rewriteLegacyTokens(format_str)
+    -- legacy strings render identically. opts.legacy_literal skips this pass
+    -- for the line-editor live preview.
+    if not opts.legacy_literal then
+        format_str = rewriteLegacyTokens(format_str)
+    end
 
     -- Process conditionals before token expansion (skip in preview mode).
     -- buildConditionState will reuse paint_ctx._condition_state if present,
@@ -1333,8 +1336,8 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     return result, is_empty, bar_info
 end
 
-function Tokens.expandPreview(format_str, ui, session_elapsed, session_pages_read, tick_width_multiplier, symbol_color)
-    return Tokens.expand(format_str, ui, session_elapsed, session_pages_read, true, tick_width_multiplier, symbol_color)
+function Tokens.expandPreview(format_str, ui, session_elapsed, session_pages_read, tick_width_multiplier, symbol_color, opts)
+    return Tokens.expand(format_str, ui, session_elapsed, session_pages_read, true, tick_width_multiplier, symbol_color, nil, opts)
 end
 
 -- Test-only internal exports. Underscore prefix marks these as private —
