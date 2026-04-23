@@ -33,22 +33,67 @@ local TOKEN_ALIAS = {
 }
 
 --- Rewrite legacy single-letter tokens (%A, %J, %C1, ...) to their v5 names.
--- Single-pass greedy-identifier match: %author captures "author" (length > 1,
--- untouched); %A captures "A" (length 1, in TOKEN_ALIAS, rewritten); %C1 is
--- matched separately via the ^C(%d)$ sub-pattern. Any {...} following a token
--- is preserved verbatim — this function does not touch braces.
--- Idempotent: applying twice gives the same result.
+-- Walks the string left-to-right, rewriting bare %ident occurrences via
+-- TOKEN_ALIAS while leaving %ident{...} brace content verbatim — brace bodies
+-- may contain literal %-escapes (e.g. %datetime{%H:%M}) that must NOT be
+-- interpreted as bookends tokens. Idempotent: applying twice gives the same
+-- result. %C1/%C2/%C3 is rewritten to %chap_title_<N> via the C(%d) check.
 local function rewriteLegacyTokens(format_str)
-    return (format_str:gsub("%%([%a_][%w_]*)", function(ident)
-        if #ident == 1 and TOKEN_ALIAS[ident] then
-            return "%" .. TOKEN_ALIAS[ident]
+    local out = {}
+    local i, len = 1, #format_str
+    while i <= len do
+        local pct_s = format_str:find("%", i, true)
+        if not pct_s then
+            table.insert(out, format_str:sub(i))
+            break
         end
-        local depth = ident:match("^C(%d)$")
-        if depth then
-            return "%chap_title_" .. depth
+        if pct_s > i then
+            table.insert(out, format_str:sub(i, pct_s - 1))
         end
-        return nil  -- keep as-is
-    end))
+        -- Try to match an identifier after the %.
+        local ident_s = pct_s + 1
+        local ident_e = ident_s
+        local c = format_str:sub(ident_s, ident_s)
+        if c:match("[%a_]") then
+            -- Consume maximal [%a_][%w_]* identifier.
+            ident_e = ident_s
+            while ident_e <= len and format_str:sub(ident_e, ident_e):match("[%w_]") do
+                ident_e = ident_e + 1
+            end
+            local ident = format_str:sub(ident_s, ident_e - 1)
+            -- Determine rewritten identifier, or keep as-is.
+            local new_ident
+            if #ident == 1 and TOKEN_ALIAS[ident] then
+                new_ident = TOKEN_ALIAS[ident]
+            else
+                local depth = ident:match("^C(%d)$")
+                if depth then
+                    new_ident = "chap_title_" .. depth
+                else
+                    new_ident = ident
+                end
+            end
+            -- Look for a following {...} block; if present, preserve its
+            -- content verbatim (no scanning for legacy tokens inside braces).
+            local brace = ""
+            if ident_e <= len and format_str:sub(ident_e, ident_e) == "{" then
+                -- Find matching '}' (braces are not nested in our grammar).
+                local close = format_str:find("}", ident_e + 1, true)
+                if close then
+                    brace = format_str:sub(ident_e, close)
+                    ident_e = close + 1
+                end
+            end
+            table.insert(out, "%" .. new_ident .. brace)
+            i = ident_e
+        else
+            -- % not followed by an identifier char (e.g. %%, %[space], end of
+            -- string). Emit the % literally and advance one char.
+            table.insert(out, "%")
+            i = pct_s + 1
+        end
+    end
+    return table.concat(out)
 end
 
 -- Legacy conditional-state key → v5 state key. Resolved at lookup time inside
@@ -548,6 +593,12 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
         return format_str
     end
 
+    -- v5 alias pass: rewrite legacy %X tokens to v5 names so all downstream
+    -- processing uses a single vocabulary. Gallery presets and user-authored
+    -- legacy strings render identically. Task 11 will add an opts flag to skip
+    -- this pass for the line-editor live preview.
+    format_str = rewriteLegacyTokens(format_str)
+
     -- Process conditionals before token expansion (skip in preview mode).
     -- buildConditionState will reuse paint_ctx._condition_state if present,
     -- so multiple lines with [if:...] in the same paint share one build.
@@ -565,15 +616,6 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     if not format_str:find("%%") then
         return format_str
     end
-
-    -- Protect bare %datetime (no braces) from single-char bareword expansion
-    -- later in the pipeline — this token is the explicit strftime escape hatch
-    -- and is meaningless without braces. Treat bare form as literal.
-    -- (Task 9 will generalise bareword expansion to multi-char tokens; until
-    -- then, use a sentinel swap to keep this token intact.)
-    local DATETIME_SENTINEL = "\x00DATETIME\x00"
-    format_str = format_str:gsub("%%datetime([^{%w_])", DATETIME_SENTINEL .. "%1")
-    format_str = format_str:gsub("%%datetime$", DATETIME_SENTINEL)
 
     local orig_format_str = format_str
 
@@ -637,34 +679,38 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     -- Preview mode: return descriptive labels
     if preview_mode then
         local preview = {
-            ["%c"] = "[page]", ["%t"] = "[total]", ["%p"] = "[%]",
-            ["%P"] = "[ch%]", ["%g"] = "[ch.read]", ["%G"] = "[ch.total]",
-            ["%l"] = "[ch.left]", ["%L"] = "[left]",
-            ["%j"] = "[ch.num]", ["%J"] = "[ch.count]",
-            ["%h"] = "[ch.time]", ["%H"] = "[time]",
-            ["%k"] = "[12h]", ["%K"] = "[24h]",
-            ["%d"] = "[date]", ["%D"] = "[date.long]",
-            ["%n"] = "[dd/mm/yy]", ["%w"] = "[weekday]", ["%a"] = "[wkday]",
-            ["%R"] = "[session]", ["%s"] = "[pages]",
-            ["%T"] = "[title]", ["%A"] = "[author]",
-            ["%S"] = "[series]", ["%C"] = "[chapter]",
-            ["%N"] = "[file]", ["%i"] = "[lang]",
-            ["%o"] = "[format]", ["%q"] = "[highlights]", ["%Q"] = "[notes]", ["%x"] = "[bookmarks]",
-            ["%X"] = "[annotations]",
-            ["%r"] = "[pg/hr]", ["%E"] = "[total]",
-            ["%b"] = "[batt]", ["%B"] = "[batt]", ["%W"] = "[wifi]",
-            ["%V"] = "[invert]",
-            ["%f"] = "[light]", ["%F"] = "[warmth]",
-            ["%m"] = "[mem]", ["%M"] = "[rss]",
-            ["%v"] = "[disk]",
-            ["%bar"] = "\xE2\x96\xB0\xE2\x96\xB0\xE2\x96\xB1\xE2\x96\xB1",  -- ▰▰▱▱
+            page_num = "[page]", page_count = "[total]",
+            book_pct = "[%]", chap_pct = "[ch%]",
+            chap_read = "[ch.read]", chap_pages = "[ch.total]",
+            chap_pages_left = "[ch.left]", pages_left = "[left]",
+            chap_num = "[ch.num]", chap_count = "[ch.count]",
+            chap_time_left = "[ch.time]", book_time_left = "[time]",
+            time_12h = "[12h]", time_24h = "[24h]", time = "[24h]",
+            date = "[date]", date_long = "[date.long]",
+            date_numeric = "[dd/mm/yy]",
+            weekday = "[weekday]", weekday_short = "[wkday]",
+            session_time = "[session]", session_pages = "[pages]",
+            title = "[title]", author = "[author]",
+            series = "[series]", series_name = "[series.name]", series_num = "[series.#]",
+            chap_title = "[chapter]",
+            filename = "[file]", lang = "[lang]",
+            format = "[format]",
+            highlights = "[highlights]", notes = "[notes]",
+            bookmarks = "[bookmarks]", annotations = "[annotations]",
+            speed = "[pg/hr]", book_read_time = "[total]",
+            batt = "[batt]", batt_icon = "[batt]", wifi = "[wifi]",
+            invert = "[invert]",
+            light = "[light]", warmth = "[warmth]",
+            mem = "[mem]", ram = "[rss]",
+            disk = "[disk]",
+            bar = "\xE2\x96\xB0\xE2\x96\xB0\xE2\x96\xB1\xE2\x96\xB1",  -- ▰▰▱▱
         }
         -- Strip %bar{N} and %X{N} for preview, showing limit in label
         -- %bar{N} must be replaced before %bar (longer pattern first)
         local r = orig_format_str:gsub("%%bar{(%d+)}", function(n)
-            return preview["%bar"] .. "{<=" .. n .. "}"
+            return preview.bar .. "{<=" .. n .. "}"
         end)
-        r = r:gsub("%%bar", preview["%bar"])
+        r = r:gsub("%%bar", preview.bar)
         -- Handle %datetime{...} — in preview mode, actually expand it (not a placeholder)
         r = r:gsub("%%datetime(%b{})", function(brace)
             local content = brace:sub(2, -2)
@@ -678,32 +724,39 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
             if saved_locale then os.setlocale(saved_locale, "time") end
             return formatted
         end)
-        -- Handle %C<depth>{N} and %C<depth> before generic patterns
-        r = r:gsub("%%C(%d){(%d+)}", function(depth, n)
+        -- Depth-specific chapter-title before bareword tokens
+        r = r:gsub("%%chap_title_(%d){(%d+)}", function(depth, n)
             return "{ch." .. depth .. "<=" .. n .. "}"
         end)
-        r = r:gsub("%%C(%d)", function(depth)
+        r = r:gsub("%%chap_title_(%d)", function(depth)
             return "[ch." .. depth .. "]"
         end)
-        r = r:gsub("(%%%a){(%d+)}", function(token, n)
+        -- Legacy %C1/2/3 already rewritten to %chap_title_1/2/3 by the
+        -- alias pass at the top of expand().
+        r = r:gsub("%%([%a_][%w_]*){(%d+)}", function(token, n)
             local label = preview[token]
             if label then
                 -- Turn [chapter] into {chapter<=200}
                 return "{" .. label:sub(2, -2) .. "<=" .. n .. "}"
             end
-            return token .. "{" .. n .. "}"
+            return "%" .. token .. "{" .. n .. "}"
         end)
-        r = r:gsub("(%%%a)", preview)
-        -- Restore bare %datetime sentinel to literal form
-        r = r:gsub(DATETIME_SENTINEL, "%%datetime")
+        r = r:gsub("%%([%a_][%w_]*)", function(token)
+            local label = preview[token]
+            if label then return label end
+            return "%" .. token
+        end)
         return r
     end
 
-    -- Helper: check if any of the given single-char tokens appear in the format string.
-    -- Uses word boundary to avoid %bar matching %b.
+    -- Helper: check if any of the given v5 bareword tokens appear in the format string.
+    -- Uses a non-ident trailing char (or end-of-string) as the word boundary so
+    -- e.g. "page_num" doesn't accidentally match "page_num_foo".
     local function needs(...)
         for i = 1, select("#", ...) do
-            if format_str:find("%%" .. select(i, ...) .. "[^%a]") or format_str:match("%%" .. select(i, ...) .. "$") then
+            local name = select(i, ...)
+            if format_str:find("%%" .. name .. "[^%w_]")
+                    or format_str:match("%%" .. name .. "$") then
                 return true
             end
         end
@@ -724,7 +777,7 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     -- Numeric page indices for arithmetic (separate from display labels)
     local page_idx = nil   -- numeric current page position
     local page_count = nil -- numeric total pages
-    if needs("c", "t", "p", "L") then
+    if needs("page_num", "page_count", "book_pct", "pages_left") then
         if ui.pagemap and ui.pagemap:wantsPageLabels() then
             local label, idx, count = ui.pagemap:getCurrentPageLabel(true)
             currentpage = label or ""
@@ -778,7 +831,7 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     local chapter_num = ""      -- 1-indexed position of current chapter in TOC
     local chapter_count = ""    -- total number of entries in TOC
     local chapter_titles_by_depth = {}  -- { [1] = "Part II", [2] = "Chapter 1", ... }
-    if needs("P", "g", "G", "l", "C", "j", "J") and pageno and ui.toc then
+    if needs("chap_pct", "chap_read", "chap_pages", "chap_pages_left", "chap_title", "chap_num", "chap_count") and pageno and ui.toc then
         -- Raw page calculation for %P (percentage)
         local chapter_start = ui.toc:getPreviousChapter(pageno)
         if ui.toc:isChapterStart(pageno) then
@@ -876,8 +929,8 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     -- Time left in chapter / document (via statistics plugin)
     local time_left_chapter = ""
     local time_left_doc = ""
-    if needs("h", "H") and pageno and ui.statistics and ui.statistics.getTimeForPages then
-        if needs("h") then
+    if needs("chap_time_left", "book_time_left") and pageno and ui.statistics and ui.statistics.getTimeForPages then
+        if needs("chap_time_left") then
             local ch_left = ui.toc and ui.toc:getChapterPagesLeft(pageno, true)
             if ch_left then
                 ch_left = math.max(0, ch_left)
@@ -889,7 +942,7 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
                 end
             end
         end
-        if needs("H") then
+        if needs("book_time_left") then
             -- Use raw page count: getTimeForPages is calibrated against avg_time per raw page
             local doc_left = doc:getTotalPagesLeft(pageno)
             if doc_left and doc_left > 0 then
@@ -904,10 +957,10 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     -- Clock
     local time_12h = ""
     local time_24h = ""
-    if needs("k") then
+    if needs("time_12h") then
         time_12h = os.date("%I:%M %p"):gsub("^0", "")
     end
-    if needs("K") then
+    if needs("time_24h", "time") then
         time_24h = os.date("%H:%M")
     end
 
@@ -917,7 +970,7 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     local date_num = ""
     local date_weekday = ""
     local date_weekday_short = ""
-    if needs("d", "D", "n", "w", "a") then
+    if needs("date", "date_long", "date_numeric", "weekday", "weekday_short") then
         -- Use device language for day/month names if available
         local loc = getDateLocale()
         local saved_locale
@@ -925,11 +978,11 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
             saved_locale = os.setlocale(nil, "time")
             os.setlocale(loc, "time")
         end
-        if needs("d") then date_short = os.date("%d %b") end
-        if needs("D") then date_long = os.date("%d %B %Y") end
-        if needs("n") then date_num = os.date("%d/%m/%Y") end
-        if needs("w") then date_weekday = os.date("%A") end
-        if needs("a") then date_weekday_short = os.date("%a") end
+        if needs("date") then date_short = os.date("%d %b") end
+        if needs("date_long") then date_long = os.date("%d %B %Y") end
+        if needs("date_numeric") then date_num = os.date("%d/%m/%Y") end
+        if needs("weekday") then date_weekday = os.date("%A") end
+        if needs("weekday_short") then date_weekday_short = os.date("%a") end
         if saved_locale then
             os.setlocale(saved_locale, "time")
         end
@@ -937,7 +990,7 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
 
     -- Session reading time
     local session_time = ""
-    if needs("R") and session_elapsed then
+    if needs("session_time") and session_elapsed then
         local user_duration_format = G_reader_settings:readSetting("duration_format", "classic")
         session_time = datetime.secondsToClockDuration(user_duration_format, session_elapsed, true)
     end
@@ -946,8 +999,10 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     local title = ""
     local authors = ""
     local series = ""
+    local series_name = ""   -- Task 10 will populate from doc_props
+    local series_num = ""    -- Task 10 will populate from doc_props
     local book_language = ""
-    if needs("T", "A", "S", "i") then
+    if needs("title", "author", "series", "series_name", "series_num", "lang") then
         local doc_props = ui.doc_props or {}
         local ok, props = pcall(doc.getProps, doc)
         if not ok then props = {} end
@@ -958,7 +1013,7 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
         if series ~= "" and series_index then
             series = series .. " #" .. series_index
         end
-        if needs("i") then
+        if needs("lang") then
             book_language = doc_props.language or props.language or ""
         end
     end
@@ -966,13 +1021,13 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     -- File name (without path and extension)
     local file_name = ""
     local doc_format = ""
-    if needs("N", "o") then
+    if needs("filename", "format") then
         local filepath = doc.file or ""
-        if needs("N") then
+        if needs("filename") then
             file_name = filepath:match("([^/]+)$") or ""
             file_name = (file_name:gsub("%.[^.]+$", ""))
         end
-        if needs("o") then
+        if needs("format") then
             doc_format = (filepath:match("%.([^.]+)$") or ""):upper()
         end
     end
@@ -981,11 +1036,11 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     local highlights_count = ""
     local notes_count = ""
     local bookmarks_count = ""
-    if needs("q", "Q", "x") and ui.annotation then
+    if needs("highlights", "notes", "bookmarks") and ui.annotation then
         local h, n = ui.annotation:getNumberOfHighlightsAndNotes()
-        if needs("q") then highlights_count = tostring(h or 0) end
-        if needs("Q") then notes_count = tostring(n or 0) end
-        if needs("x") then
+        if needs("highlights") then highlights_count = tostring(h or 0) end
+        if needs("notes") then notes_count = tostring(n or 0) end
+        if needs("bookmarks") then
             local bm = 0
             for _, item in ipairs(ui.annotation.annotations or {}) do
                 if not item.drawer then bm = bm + 1 end
@@ -997,8 +1052,8 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     -- Reading speed and total book time (via statistics plugin)
     local reading_speed = ""
     local total_book_time = ""
-    if needs("r", "E") then
-        if needs("r") then
+    if needs("speed", "book_read_time") then
+        if needs("speed") then
             -- Prefer session-based speed after initial stabilisation period
             if session_elapsed and session_elapsed > 60 and session_pages > 0 then
                 reading_speed = tostring(math.floor(session_pages / session_elapsed * 3600))
@@ -1009,7 +1064,7 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
                 end
             end
         end
-        if needs("E") and ui.statistics then
+        if needs("book_read_time") and ui.statistics then
             local total_secs = ui.statistics.book_read_time
             if total_secs and total_secs > 0 then
                 local user_duration_format = G_reader_settings:readSetting("duration_format", "classic")
@@ -1021,7 +1076,7 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     -- Battery
     local batt_lvl = ""
     local batt_symbol = ""
-    if needs("b", "B") then
+    if needs("batt", "batt_icon") then
         local powerd = Device:getPowerDevice()
         local capacity = powerd:getCapacity()
         if capacity then
@@ -1032,7 +1087,7 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
 
     -- Wi-Fi
     local wifi_symbol = ""
-    if needs("W") then
+    if needs("wifi") then
         local NetworkMgr = require("ui/network/manager")
         if NetworkMgr:isWifiOn() then
             if NetworkMgr:isConnected() then
@@ -1047,20 +1102,20 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     -- Frontlight
     local fl_intensity = ""
     local fl_warmth = ""
-    if needs("f", "F") then
+    if needs("light", "warmth") then
         local powerd = Device:getPowerDevice()
-        if needs("f") then
+        if needs("light") then
             local val = powerd:frontlightIntensity()
             fl_intensity = val == 0 and "OFF" or tostring(val)
         end
-        if needs("F") and Device:hasNaturalLight() then
+        if needs("warmth") and Device:hasNaturalLight() then
             fl_warmth = tostring(powerd:toNativeWarmth(powerd:frontlightWarmth()))
         end
     end
 
     -- Memory usage (system-wide percentage)
     local mem_usage = ""
-    if needs("m") then
+    if needs("mem") then
         local meminfo = io.open("/proc/meminfo", "r")
         if meminfo then
             local total, available
@@ -1081,7 +1136,7 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
 
     -- RAM usage (KOReader process RSS in MB)
     local ram_mb = ""
-    if needs("M") then
+    if needs("ram") then
         local statm = io.open("/proc/self/statm", "r")
         if statm then
             local line = statm:read("*l")
@@ -1097,7 +1152,7 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
 
     -- Disk available
     local disk_avail = ""
-    if needs("v") then
+    if needs("disk") then
         local util = require("util")
         if util.diskUsage then
             local drive = Device.home_dir or "/"
@@ -1112,7 +1167,7 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     -- Shows ⇄ when any page-turn direction is inverted; empty otherwise.
     -- Matches stock readerfooter page_turning_inverted logic (OR of four flags).
     local page_turn_symbol = ""
-    if needs("V") then
+    if needs("invert") then
         local G = G_reader_settings
         local inverted =
                G:isTrue("input_invert_page_turn_keys")
@@ -1126,7 +1181,7 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
 
     -- Total annotations (bookmarks + highlights + notes, matching stock bookmark_count)
     local total_annotations = ""
-    if needs("X") then
+    if needs("annotations") then
         if ui.annotation and ui.annotation.getNumberOfAnnotations then
             total_annotations = tostring(ui.annotation:getNumberOfAnnotations() or 0)
         end
@@ -1140,53 +1195,56 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
 
     local replace = {
         -- Page/Progress
-        ["%c"] = tostring(currentpage),
-        ["%t"] = tostring(totalpages),
-        ["%p"] = tostring(percent),
-        ["%P"] = tostring(chapter_pct),
-        ["%g"] = tostring(chapter_pages_done),
-        ["%G"] = tostring(chapter_total_pages),
-        ["%l"] = tostring(chapter_pages_left),
-        ["%L"] = tostring(pages_left_book),
-        ["%j"] = tostring(chapter_num),
-        ["%J"] = tostring(chapter_count),
+        page_num   = tostring(currentpage),
+        page_count = tostring(totalpages),
+        book_pct   = tostring(percent),
+        chap_pct   = tostring(chapter_pct),
+        chap_read  = tostring(chapter_pages_done),
+        chap_pages = tostring(chapter_total_pages),
+        chap_pages_left = tostring(chapter_pages_left),
+        pages_left = tostring(pages_left_book),
+        chap_num   = tostring(chapter_num),
+        chap_count = tostring(chapter_count),
         -- Time/Reading
-        ["%h"] = tostring(time_left_chapter),
-        ["%H"] = tostring(time_left_doc),
-        ["%k"] = time_12h,
-        ["%K"] = time_24h,
-        ["%d"] = date_short,
-        ["%D"] = date_long,
-        ["%n"] = date_num,
-        ["%w"] = date_weekday,
-        ["%a"] = date_weekday_short,
-        ["%R"] = session_time,
-        ["%s"] = tostring(session_pages),
+        chap_time_left = tostring(time_left_chapter),
+        book_time_left = tostring(time_left_doc),
+        time_12h = time_12h,
+        time_24h = time_24h,
+        time     = time_24h,              -- plain %time = %time_24h
+        date          = date_short,
+        date_long     = date_long,
+        date_numeric  = date_num,
+        weekday       = date_weekday,
+        weekday_short = date_weekday_short,
+        session_time  = session_time,
+        session_pages = tostring(session_pages),
         -- Metadata
-        ["%T"] = tostring(title),
-        ["%A"] = tostring(authors),
-        ["%S"] = tostring(series),
-        ["%C"] = tostring(chapter_title),
-        ["%N"] = file_name,
-        ["%i"] = book_language,
-        ["%o"] = doc_format,
-        ["%q"] = highlights_count,
-        ["%Q"] = notes_count,
-        ["%x"] = bookmarks_count,
-        ["%X"] = total_annotations,
+        title       = tostring(title),
+        author      = tostring(authors),
+        series      = tostring(series),
+        series_name = tostring(series_name or ""),   -- populated in Task 10
+        series_num  = tostring(series_num or ""),    -- populated in Task 10
+        chap_title  = tostring(chapter_title),
+        filename    = file_name,
+        lang        = book_language,
+        format      = doc_format,
+        highlights  = highlights_count,
+        notes       = notes_count,
+        bookmarks   = bookmarks_count,
+        annotations = total_annotations,
         -- Statistics
-        ["%r"] = reading_speed,
-        ["%E"] = total_book_time,
+        speed          = reading_speed,
+        book_read_time = total_book_time,
         -- Device
-        ["%b"] = tostring(batt_lvl),
-        ["%B"] = tostring(batt_symbol),
-        ["%W"] = wifi_symbol,
-        ["%f"] = fl_intensity,
-        ["%F"] = fl_warmth,
-        ["%m"] = tostring(mem_usage),
-        ["%M"] = ram_mb,
-        ["%v"] = disk_avail,
-        ["%V"] = page_turn_symbol,
+        batt      = tostring(batt_lvl),
+        batt_icon = tostring(batt_symbol),
+        wifi      = wifi_symbol,
+        light     = fl_intensity,
+        warmth    = fl_warmth,
+        mem       = tostring(mem_usage),
+        ram       = ram_mb,
+        disk      = disk_avail,
+        invert    = page_turn_symbol,
     }
     -- (symbol_color wrapping happens after token expansion — see below)
     -- Track whether all tokens in the string resolved to empty or "0"
@@ -1194,22 +1252,24 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
     local all_empty = true
     -- Tokens that always count as content (page/chapter/time info is meaningful at zero)
     local always_content = {
-        ["%c"] = true, ["%t"] = true, ["%p"] = true, ["%L"] = true,
-        ["%P"] = true, ["%g"] = true, ["%G"] = true, ["%l"] = true,
-        ["%j"] = true, ["%J"] = true,
-        ["%h"] = true, ["%H"] = true, ["%k"] = true, ["%K"] = true,
-        ["%R"] = true, ["%s"] = true, ["%r"] = true,
+        page_num = true, page_count = true, book_pct = true, pages_left = true,
+        chap_pct = true, chap_read = true, chap_pages = true, chap_pages_left = true,
+        chap_num = true, chap_count = true,
+        chap_time_left = true, book_time_left = true, time_12h = true, time_24h = true,
+        time = true,
+        session_time = true, session_pages = true, speed = true,
     }
     -- Per-token occurrence counters for matching limits
     local token_occurrence = {}
-    -- Expand depth-specific chapter tokens (%C1, %C2, …) before single-char tokens,
-    -- so that %C2 isn't partially consumed as %C + literal "2".
-    local result = result_str:gsub("%%C(%d)", function(depth_str)
+    -- Expand depth-specific chapter tokens (%chap_title_1..3) before bareword
+    -- tokens. Legacy %C1/%C2/%C3 are rewritten to %chap_title_1/2/3 by the
+    -- alias pass at the top of expand().
+    local result = result_str:gsub("%%chap_title_(%d)", function(depth_str)
         local d = tonumber(depth_str)
         has_token = true
         local val = chapter_titles_by_depth[d] or ""
         if val ~= "" then all_empty = false end
-        local key = "%C" .. depth_str
+        local key = "%chap_title_" .. depth_str
         if token_limits[key] then
             token_occurrence[key] = (token_occurrence[key] or 0) + 1
             local px = token_limits[key][token_occurrence[key]]
@@ -1219,19 +1279,20 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
         end
         return val
     end)
-    result = result:gsub("(%%%a)", function(token)
-        local val = replace[token]
-        if val == nil then return token end -- unknown token, leave as-is
+    result = result:gsub("%%([%a_][%w_]*)", function(ident)
+        local val = replace[ident]
+        if val == nil then return "%" .. ident end  -- unknown, leave as-is
         has_token = true
-        if (val ~= "" and val ~= "0") or always_content[token] then
+        if (val ~= "" and val ~= "0") or always_content[ident] then
             all_empty = false
         end
         -- Wrap with markers if this occurrence has a pixel limit.
         -- Apply markers per-line so they don't span newlines (the
         -- renderer splits on \n before processing markers).
-        if token_limits[token] then
-            token_occurrence[token] = (token_occurrence[token] or 0) + 1
-            local px = token_limits[token][token_occurrence[token]]
+        local key = "%" .. ident
+        if token_limits[key] then
+            token_occurrence[key] = (token_occurrence[key] or 0) + 1
+            local px = token_limits[key][token_occurrence[key]]
             if px then
                 if val:find("\n") then
                     local wrapped = {}
@@ -1266,9 +1327,6 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
 
     -- A line with a bar token is never considered empty
     local is_empty = has_token and all_empty and not bar_info
-
-    -- Restore bare %datetime sentinel to literal form
-    result = result:gsub(DATETIME_SENTINEL, "%%datetime")
 
     return result, is_empty, bar_info
 end

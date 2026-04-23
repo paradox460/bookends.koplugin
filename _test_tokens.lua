@@ -379,5 +379,65 @@ test("state: legacy [if:chapters>0] still evaluates via STATE_ALIAS", function()
     eq(r, "ok")
 end)
 
+-- ============================================================================
+-- v5 token names resolve through the full Tokens.expand pipeline
+-- ============================================================================
+-- A richer stubUi for expansion tests — covers doc props + pageno.
+local function stubUiForExpand()
+    return {
+        view = { state = { page = 5 } },
+        document = {
+            file = "/Foundation.epub",
+            getPageCount = function() return 100 end,
+            hasHiddenFlows = function() return false end,
+            getProps = function()
+                return { title = "Foundation", authors = "Isaac Asimov",
+                         series = "Foundation", series_index = 1 }
+            end,
+        },
+        doc_props = { display_title = "Foundation", authors = "Isaac Asimov",
+                      series = "Foundation", series_index = 1 },
+        toc = nil,
+        pagemap = nil,
+        annotation = nil,
+        statistics = nil,
+    }
+end
+
+test("v5 tokens: %author expands to author name", function()
+    local r = Tokens.expand("%author", stubUiForExpand(), nil, nil, false, 2, nil)
+    eq(r, "Isaac Asimov")
+end)
+
+test("v5 tokens: %title expands to title", function()
+    local r = Tokens.expand("%title", stubUiForExpand(), nil, nil, false, 2, nil)
+    eq(r, "Foundation")
+end)
+
+test("v5 tokens: %page_num expands to current page", function()
+    local r = Tokens.expand("%page_num", stubUiForExpand(), nil, nil, false, 2, nil)
+    eq(r, "5")
+end)
+
+test("legacy alias via expand: %A expands to author name", function()
+    local r = Tokens.expand("%A", stubUiForExpand(), nil, nil, false, 2, nil)
+    eq(r, "Isaac Asimov")
+end)
+
+test("legacy alias via expand: %T expands to title", function()
+    local r = Tokens.expand("%T", stubUiForExpand(), nil, nil, false, 2, nil)
+    eq(r, "Foundation")
+end)
+
+test("legacy alias via expand: %c expands to current page", function()
+    local r = Tokens.expand("%c", stubUiForExpand(), nil, nil, false, 2, nil)
+    eq(r, "5")
+end)
+
+test("mixed legacy + new: '%A — %title' → 'Isaac Asimov — Foundation'", function()
+    local r = Tokens.expand("%A — %title", stubUiForExpand(), nil, nil, false, 2, nil)
+    eq(r, "Isaac Asimov — Foundation")
+end)
+
 io.write(string.format("\n%d passed, %d failed\n", pass, fail))
 os.exit(fail == 0 and 0 or 1)
