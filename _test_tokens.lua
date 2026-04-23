@@ -253,6 +253,31 @@ test("canon: string without any tokens or predicates unchanged", function()
 end)
 
 -- ============================================================================
+-- Brace grammar regression: existing forms must keep working after refactor
+-- ============================================================================
+-- expandPreview uses symbolic placeholders, so stable across devices.
+
+test("brace: '%bar' in preview renders ▰▰▱▱ (12 bytes)", function()
+    local r = Tokens.expandPreview("%bar", { view = {} }, nil, nil, 2, nil)
+    eq(#r, 12, "expected 4 box-chars = 12 bytes")
+end)
+
+test("brace: '%bar{100}' preview contains '100'", function()
+    local r = Tokens.expandPreview("%bar{100}", { view = {} }, nil, nil, 2, nil)
+    assert(r:find("100", 1, true), "expected '100' in preview: " .. r)
+end)
+
+test("brace: '%T{200}' preview contains '200'", function()
+    local r = Tokens.expandPreview("%T{200}", { view = {} }, nil, nil, 2, nil)
+    assert(r:find("200", 1, true), "expected '200' in preview: " .. r)
+end)
+
+test("brace: '%C1{300}' preview contains '300'", function()
+    local r = Tokens.expandPreview("%C1{300}", { view = {} }, nil, nil, 2, nil)
+    assert(r:find("300", 1, true), "expected '300' in preview: " .. r)
+end)
+
+-- ============================================================================
 -- (More tests added by subsequent tasks.)
 -- ============================================================================
 

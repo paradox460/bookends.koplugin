@@ -568,56 +568,50 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
 
     local orig_format_str = format_str
 
-    -- Pre-parse %X{N} pixel-width modifiers.
-    -- Builds a table of per-occurrence limits keyed by a running counter per token,
-    -- and strips {N} from the format string so existing expansion works unchanged.
-    local token_limits = {}  -- { ["%C"] = { [1] = 200 }, ["%T"] = { [1] = 300 } }
-    local bar_limit_w = nil  -- pixel width from %bar{N} or %bar{Nv…}
-    local bar_limit_h = nil  -- pixel height from %bar{v…}
-    -- Bar syntax (always evaluated so it handles non-numeric contents like {v10}):
-    --   %bar               auto width, default height
-    --   %bar{100}          100px wide, default height
-    --   %bar{v10}          auto width, 10px tall
-    --   %bar{100v10}       100px wide, 10px tall
-    format_str = format_str:gsub("%%bar{([^}]+)}", function(spec)
-        local w = spec:match("^(%d+)")
-        local h = spec:match("v(%d+)")
-        if w then
-            local px = tonumber(w)
-            if px and px > 0 then bar_limit_w = px end
+    -- Pre-parse %name{content} modifiers.
+    -- Single outer pattern captures every %<ident>{<content>} occurrence; each
+    -- token decides what its brace content means. Strips the braces from the
+    -- format string (storing extracted data in per-token sidecar tables) so
+    -- the later bareword expansion step is unchanged.
+    --   %bar                auto width, default height
+    --   %bar{100}           100px wide, default height
+    --   %bar{v10}           auto width, 10px tall
+    --   %bar{100v10}        100px wide, 10px tall
+    --   %<text-token>{N}    pixel-width cap
+    local token_limits = {}  -- { ["%author"] = { [1] = 200 }, ... }
+    local bar_limit_w = nil
+    local bar_limit_h = nil
+
+    format_str = format_str:gsub("%%([%a_][%w_]*)(%b{})", function(name, brace)
+        local content = brace:sub(2, -2)  -- strip { and }
+        if name == "bar" then
+            local w = content:match("^(%d+)")
+            local h = content:match("v(%d+)")
+            if w then
+                local px = tonumber(w)
+                if px and px > 0 then bar_limit_w = px end
+            end
+            if h then
+                local px = tonumber(h)
+                if px and px > 0 then bar_limit_h = px end
+            end
+            return "%bar"
         end
-        if h then
-            local px = tonumber(h)
-            if px and px > 0 then bar_limit_h = px end
-        end
-        return "%bar"
-    end)
-    -- Other tokens still use {N} numeric-only for pixel-width limits.
-    if format_str:find("{%d+}") then
-        -- Extract %C<depth>{N} (depth-specific chapter title with width limit)
-        format_str = format_str:gsub("%%C(%d){(%d+)}", function(depth, n)
+        -- Default: pixel-width cap (digits only).
+        local n = content:match("^(%d+)$")
+        if n then
             local px = tonumber(n)
             if px and px > 0 then
-                local key = "%C" .. depth
-                if not token_limits[key] then
-                    token_limits[key] = {}
-                end
+                local key = "%" .. name
+                if not token_limits[key] then token_limits[key] = {} end
                 table.insert(token_limits[key], px)
             end
-            return "%C" .. depth
-        end)
-        -- Extract %X{N} for single-char tokens
-        format_str = format_str:gsub("(%%%a){(%d+)}", function(token, n)
-            local px = tonumber(n)
-            if px and px > 0 then
-                if not token_limits[token] then
-                    token_limits[token] = {}
-                end
-                table.insert(token_limits[token], px)
-            end
-            return token
-        end)
-    end
+            return "%" .. name
+        end
+        -- Non-digit content on a token without a registered handler:
+        -- leave intact as literal (matches today's behaviour for %A{foo}).
+        return nil
+    end)
 
     -- Preview mode: return descriptive labels
     if preview_mode then
