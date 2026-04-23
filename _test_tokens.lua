@@ -203,6 +203,56 @@ test("state alias: combined legacy predicates with aliased keys", function()
 end)
 
 -- ============================================================================
+-- canonicaliseLegacy: tokens + predicate keys rewritten; values preserved
+-- ============================================================================
+test("canon: token rewrite '%A — %title' → '%author — %title'", function()
+    eq(Tokens.canonicaliseLegacy("%A — %title"), "%author — %title")
+end)
+
+test("canon: predicate key rewrite '[if:chapters>10]' → '[if:chap_count>10]'", function()
+    eq(Tokens.canonicaliseLegacy("[if:chapters>10]ok[/if]"),
+       "[if:chap_count>10]ok[/if]")
+end)
+
+test("canon: multi-key predicate '[if:chapters>10 and percent>50]'", function()
+    eq(Tokens.canonicaliseLegacy("[if:chapters>10 and percent>50]x[/if]"),
+       "[if:chap_count>10 and book_pct>50]x[/if]")
+end)
+
+test("canon: literal string value 'chapters' preserved in '[if:title=chapters]'", function()
+    eq(Tokens.canonicaliseLegacy("[if:title=chapters]t[/if]"),
+       "[if:title=chapters]t[/if]")
+end)
+
+test("canon: nested [if] blocks both rewritten", function()
+    eq(Tokens.canonicaliseLegacy("[if:chapters>10][if:percent>50]x[/if][/if]"),
+       "[if:chap_count>10][if:book_pct>50]x[/if][/if]")
+end)
+
+test("canon: [if:not chapters] keeps 'not' keyword, rewrites key", function()
+    eq(Tokens.canonicaliseLegacy("[if:not chapters]empty[/if]"),
+       "[if:not chap_count]empty[/if]")
+end)
+
+test("canon: idempotent — running twice gives same result", function()
+    local once = Tokens.canonicaliseLegacy("%A [if:chapters>10]%J[/if]")
+    local twice = Tokens.canonicaliseLegacy(once)
+    eq(twice, once)
+end)
+
+test("canon: mixed legacy + new — new names untouched", function()
+    eq(Tokens.canonicaliseLegacy("%author — %A"), "%author — %author")
+end)
+
+test("canon: empty string returns empty string", function()
+    eq(Tokens.canonicaliseLegacy(""), "")
+end)
+
+test("canon: string without any tokens or predicates unchanged", function()
+    eq(Tokens.canonicaliseLegacy("Just plain text."), "Just plain text.")
+end)
+
+-- ============================================================================
 -- (More tests added by subsequent tasks.)
 -- ============================================================================
 

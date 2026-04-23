@@ -499,6 +499,49 @@ function Tokens.buildConditionState(ui, session_elapsed, session_pages_read, pai
     return state
 end
 
+--- Rewrite legacy predicate-key names inside [if:...] openers.
+-- Walks each opener's predicate via tokeniseExpression, rewrites the KEY
+-- portion of each atom (the leading [%w_]+ run before any operator), leaves
+-- values untouched. Boolean operators (and/or/not/parens) pass through.
+local function rewriteConditionalKeys(s)
+    return (s:gsub("%[if:([^%]]-)%]", function(pred)
+        local toks = tokeniseExpression(pred)
+        local out = {}
+        for _i, tok in ipairs(toks) do
+            if tok.kind == "atom" then
+                -- atom = "key", "key=value", "key<value", "key>value" (same
+                -- shape as evaluateCondition parses). Split on first operator.
+                local key, op, rest = tok.value:match("^([%w_]+)([=<>])(.*)$")
+                if key and op then
+                    local new_key = STATE_ALIAS[key] or key
+                    table.insert(out, new_key .. op .. rest)
+                else
+                    -- No operator: bare key
+                    local bare = tok.value:match("^([%w_]+)$")
+                    if bare then
+                        table.insert(out, STATE_ALIAS[bare] or bare)
+                    else
+                        table.insert(out, tok.value)
+                    end
+                end
+            else
+                -- keyword / paren: emit verbatim
+                table.insert(out, tok.value)
+            end
+        end
+        return "[if:" .. table.concat(out, " ") .. "]"
+    end))
+end
+
+--- Canonicalise a stored format string: legacy tokens → v5 names, legacy
+-- predicate state keys → v5 keys. Pure and idempotent. Used by the line
+-- editor on open, so users see their stored preset in v5 vocabulary.
+function Tokens.canonicaliseLegacy(format_str)
+    local s = rewriteLegacyTokens(format_str)
+    s = rewriteConditionalKeys(s)
+    return s
+end
+
 function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, preview_mode, tick_width_multiplier, symbol_color, paint_ctx)
     -- Fast path: no tokens or conditionals
     if not format_str:find("%%") and not format_str:find("%[if:") then
