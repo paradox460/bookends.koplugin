@@ -54,9 +54,18 @@ end
 -- Legacy conditional-state key → v5 state key. Resolved at lookup time inside
 -- evaluateCondition (not as a string rewrite on predicates, so literal string
 -- values like [if:title=chapters] keep their value unchanged).
--- For now, only pre-v4.1 gallery names are aliased; v4.1 names will be added
--- in Task 8 when buildConditionState is updated to populate the v5 key names.
+-- Only the legacy names that differ from the new vocabulary need entries;
+-- keys already on the new vocabulary (batt, title, author, book_pct, speed,
+-- session, session_pages, wifi, connected, charging, light, invert, time,
+-- day, page, format, series) are unchanged and not aliased.
 local STATE_ALIAS = {
+    chapters        = "chap_count",    -- v4.1 name
+    chapter         = "chap_num",      -- v4.1 name (chapter number)
+    chapter_pct     = "chap_pct",      -- v4.1 name
+    chapter_title   = "chap_title",    -- v4.1 name
+    chapter_title_1 = "chap_title_1",
+    chapter_title_2 = "chap_title_2",
+    chapter_title_3 = "chap_title_3",
     percent         = "book_pct",      -- pre-v4.1 gallery compat
     pages           = "session_pages", -- pre-v4.1 gallery compat
 }

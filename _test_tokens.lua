@@ -127,6 +127,31 @@ end)
 -- ============================================================================
 -- STATE_ALIAS: legacy predicate names resolve to new state keys
 -- ============================================================================
+test("state alias: [if:chapters>10] reads state.chap_count", function()
+    local r = Tokens._processConditionals(
+        "[if:chapters>10]many[/if]", { chap_count = 15 })
+    eq(r, "many")
+end)
+
+test("state alias: [if:chapter_title] reads state.chap_title", function()
+    local r = Tokens._processConditionals(
+        "[if:chapter_title]has[/if]", { chap_title = "Chapter 1" })
+    eq(r, "has")
+end)
+
+test("state alias: [if:chapter_title_2] reads state.chap_title_2", function()
+    local r = Tokens._processConditionals(
+        "[if:chapter_title_2]sub[/if]", { chap_title_2 = "Sub" })
+    eq(r, "sub")
+end)
+
+test("state alias: mixed predicate '[if:chapters>10 and chap_pct>50]' works", function()
+    local r = Tokens._processConditionals(
+        "[if:chapters>10 and chap_pct>50]both[/if]",
+        { chap_count = 15, chap_pct = 75 })
+    eq(r, "both")
+end)
+
 test("state alias: [if:percent>50] reads state.book_pct (pre-v4.1 gallery compat)", function()
     local r = Tokens._processConditionals(
         "[if:percent>50]past[/if]", { book_pct = 75 })
