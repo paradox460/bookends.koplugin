@@ -566,6 +566,15 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
         return format_str
     end
 
+    -- Protect bare %datetime (no braces) from single-char bareword expansion
+    -- later in the pipeline — this token is the explicit strftime escape hatch
+    -- and is meaningless without braces. Treat bare form as literal.
+    -- (Task 9 will generalise bareword expansion to multi-char tokens; until
+    -- then, use a sentinel swap to keep this token intact.)
+    local DATETIME_SENTINEL = "\x00DATETIME\x00"
+    format_str = format_str:gsub("%%datetime([^{%w_])", DATETIME_SENTINEL .. "%1")
+    format_str = format_str:gsub("%%datetime$", DATETIME_SENTINEL)
+
     local orig_format_str = format_str
 
     -- Pre-parse %name{content} modifiers.
@@ -596,6 +605,18 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
                 if px and px > 0 then bar_limit_h = px end
             end
             return "%bar"
+        end
+        if name == "datetime" then
+            -- Strftime escape hatch. Respect device locale (see getDateLocale).
+            local loc = getDateLocale()
+            local saved_locale
+            if loc then
+                saved_locale = os.setlocale(nil, "time")
+                os.setlocale(loc, "time")
+            end
+            local formatted = os.date(content) or ""
+            if saved_locale then os.setlocale(saved_locale, "time") end
+            return formatted
         end
         -- Default: pixel-width cap (digits only).
         local n = content:match("^(%d+)$")
@@ -644,6 +665,19 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
             return preview["%bar"] .. "{<=" .. n .. "}"
         end)
         r = r:gsub("%%bar", preview["%bar"])
+        -- Handle %datetime{...} — in preview mode, actually expand it (not a placeholder)
+        r = r:gsub("%%datetime(%b{})", function(brace)
+            local content = brace:sub(2, -2)
+            local loc = getDateLocale()
+            local saved_locale
+            if loc then
+                saved_locale = os.setlocale(nil, "time")
+                os.setlocale(loc, "time")
+            end
+            local formatted = os.date(content) or ""
+            if saved_locale then os.setlocale(saved_locale, "time") end
+            return formatted
+        end)
         -- Handle %C<depth>{N} and %C<depth> before generic patterns
         r = r:gsub("%%C(%d){(%d+)}", function(depth, n)
             return "{ch." .. depth .. "<=" .. n .. "}"
@@ -660,6 +694,8 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
             return token .. "{" .. n .. "}"
         end)
         r = r:gsub("(%%%a)", preview)
+        -- Restore bare %datetime sentinel to literal form
+        r = r:gsub(DATETIME_SENTINEL, "%%datetime")
         return r
     end
 
@@ -1230,6 +1266,10 @@ function Tokens.expand(format_str, ui, session_elapsed, session_pages_read, prev
 
     -- A line with a bar token is never considered empty
     local is_empty = has_token and all_empty and not bar_info
+
+    -- Restore bare %datetime sentinel to literal form
+    result = result:gsub(DATETIME_SENTINEL, "%%datetime")
+
     return result, is_empty, bar_info
 end
 

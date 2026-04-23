@@ -278,6 +278,38 @@ test("brace: '%C1{300}' preview contains '300'", function()
 end)
 
 -- ============================================================================
+-- %datetime{...} strftime escape hatch
+-- ============================================================================
+test("datetime: %datetime{%Y} expands to current year", function()
+    local year = os.date("%Y")
+    local r = Tokens.expandPreview("%datetime{%Y}", { view = {} }, nil, nil, 2, nil)
+    eq(r, year)
+end)
+
+test("datetime: %datetime{%H:%M} expands to HH:MM clock", function()
+    local r = Tokens.expandPreview("%datetime{%H:%M}", { view = {} }, nil, nil, 2, nil)
+    assert(r:match("^%d+:%d%d$"), "expected HH:MM, got: " .. r)
+end)
+
+test("datetime: %datetime{%d %B} expands to day + full month", function()
+    local expected = os.date("%d %B")
+    local r = Tokens.expandPreview("%datetime{%d %B}", { view = {} }, nil, nil, 2, nil)
+    eq(r, expected)
+end)
+
+test("datetime: bare %datetime falls through as literal", function()
+    local r = Tokens.expandPreview("%datetime", { view = {} }, nil, nil, 2, nil)
+    eq(r, "%datetime")
+end)
+
+test("datetime: mixed with literal text", function()
+    local year = os.date("%Y")
+    local r = Tokens.expandPreview("Year: %datetime{%Y}",
+        { view = {} }, nil, nil, 2, nil)
+    eq(r, "Year: " .. year)
+end)
+
+-- ============================================================================
 -- (More tests added by subsequent tasks.)
 -- ============================================================================
 
