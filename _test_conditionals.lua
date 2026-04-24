@@ -254,7 +254,7 @@ test("rename: book_pct is the new name for book percent", function()
 end)
 
 test("rename: chapter_pct is the new name for chapter percent", function()
-    eq(P("[if:chapter_pct>50]x[/if]", {chapter_pct=75}), "x")
+    eq(P("[if:chapter_pct>50]x[/if]", {chap_pct=75}), "x")
 end)
 
 test("rename: session_pages is the new name for session pages read", function()
@@ -272,20 +272,20 @@ end)
 -- ----------------------------------------------------------------------------
 
 test("new: chapters>20 true", function()
-    eq(P("[if:chapters>20]long[/if]", {chapters=25}), "long")
+    eq(P("[if:chapters>20]long[/if]", {chap_count=25}), "long")
 end)
 
 test("new: chapters>20 false", function()
-    eq(P("[if:chapters>20]long[/if]", {chapters=15}), "")
+    eq(P("[if:chapters>20]long[/if]", {chap_count=15}), "")
 end)
 
 test("new: chapter=1 (first chapter)", function()
-    eq(P("[if:chapter=1]intro[/if]", {chapter=1}), "intro")
-    eq(P("[if:chapter=1]intro[/if]", {chapter=2}), "")
+    eq(P("[if:chapter=1]intro[/if]", {chap_num=1}), "intro")
+    eq(P("[if:chapter=1]intro[/if]", {chap_num=2}), "")
 end)
 
 test("new: combined chapter + chapters", function()
-    eq(P("[if:chapter=1 and chapters>20]long intro[/if]", {chapter=1, chapters=25}), "long intro")
+    eq(P("[if:chapter=1 and chapters>20]long intro[/if]", {chap_num=1, chap_count=25}), "long intro")
 end)
 
 -- ----------------------------------------------------------------------------
@@ -293,11 +293,11 @@ end)
 -- ----------------------------------------------------------------------------
 
 test("string: chapter_title_2 empty falls to else", function()
-    eq(P("[if:chapter_title_2]%C2[else]%C1[/if]", {chapter_title_2=""}), "%C1")
+    eq(P("[if:chapter_title_2]%C2[else]%C1[/if]", {chap_title_2=""}), "%C1")
 end)
 
 test("string: chapter_title_2 present takes if", function()
-    eq(P("[if:chapter_title_2]%C2[else]%C1[/if]", {chapter_title_2="Subchapter A"}), "%C2")
+    eq(P("[if:chapter_title_2]%C2[else]%C1[/if]", {chap_title_2="Subchapter A"}), "%C2")
 end)
 
 test("string: not series → standalone", function()
@@ -313,14 +313,97 @@ end)
 test("string: combined with operators", function()
     eq(
         P("[if:series and not chapter_title_2]%S \xC2\xB7 %C1[/if]",
-          {series="Foo #2", chapter_title_2=""}),
+          {series="Foo #2", chap_title_2=""}),
         "%S \xC2\xB7 %C1"
     )
     eq(
         P("[if:series and not chapter_title_2]%S \xC2\xB7 %C1[/if]",
-          {series="Foo #2", chapter_title_2="Sub"}),
+          {series="Foo #2", chap_title_2="Sub"}),
         ""
     )
+end)
+
+test("alias: new state key name + legacy predicate name both resolve", function()
+    local r = Tokens._processConditionals("[if:chapters>5]many[/if]", { chap_count = 10 })
+    eq(r, "many")
+end)
+
+-- ----------------------------------------------------------------------------
+-- Cross-reference with @ref and != operator
+-- ----------------------------------------------------------------------------
+
+test("@ref: chapter_title_1 = @title when they match", function()
+    eq(P("[if:chapter_title_1=@title]SAME[/if]",
+         {chapter_title_1="My Book", title="My Book"}), "SAME")
+end)
+
+test("@ref: chapter_title_1 = @title when they differ", function()
+    eq(P("[if:chapter_title_1=@title]SAME[/if]",
+         {chapter_title_1="Part 1", title="My Book"}), "")
+end)
+
+test("@ref: not chapter_title_1 = @title (the motivating use-case)", function()
+    -- Book with parts: chapter_title_1 is "Part 1", title is "My Book" → show it
+    eq(P("[if:not chapter_title_1=@title]%C1[/if]",
+         {chapter_title_1="Part 1", title="My Book"}), "%C1")
+    -- Book without parts: chapter_title_1 IS the title → hide it
+    eq(P("[if:not chapter_title_1=@title]%C1[/if]",
+         {chapter_title_1="My Book", title="My Book"}), "")
+end)
+
+test("@ref: missing ref key treated as empty string", function()
+    eq(P("[if:title=@nonexistent]X[/if]", {title="Foo"}), "")
+    eq(P("[if:title=@nonexistent]X[/if]", {title=""}), "X")
+end)
+
+test("@ref: numeric cross-reference", function()
+    eq(P("[if:chapter=@chapters]last[/if]", {chapter=10, chapters=10}), "last")
+    eq(P("[if:chapter=@chapters]last[/if]", {chapter=5, chapters=10}), "")
+end)
+
+test("!=: basic not-equals with literal", function()
+    eq(P("[if:a!=1]X[/if]", {a=1}), "")
+    eq(P("[if:a!=1]X[/if]", {a=2}), "X")
+end)
+
+test("!=: string not-equals", function()
+    eq(P("[if:author!=Anonymous]named[/if]", {author="Ursula K. Le Guin"}), "named")
+    eq(P("[if:author!=Anonymous]named[/if]", {author="Anonymous"}), "")
+end)
+
+test("!=: with @ref", function()
+    eq(P("[if:chapter_title_1!=@title]%C1[/if]",
+         {chapter_title_1="Part 1", title="My Book"}), "%C1")
+    eq(P("[if:chapter_title_1!=@title]%C1[/if]",
+         {chapter_title_1="My Book", title="My Book"}), "")
+end)
+
+test("!=: nil key with != returns true", function()
+    eq(P("[if:missing!=hello]X[/if]", {}), "X")
+end)
+
+test("!=: numeric not-equals", function()
+    eq(P("[if:batt!=100]not full[/if]", {batt=85}), "not full")
+    eq(P("[if:batt!=100]not full[/if]", {batt=100}), "")
+end)
+
+test("@ref: works with else branch", function()
+    eq(P("[if:chapter_title_1=@title]dup[else]%C1[/if]",
+         {chapter_title_1="Part 1", title="My Book"}), "%C1")
+    eq(P("[if:chapter_title_1=@title]dup[else]%C1[/if]",
+         {chapter_title_1="My Book", title="My Book"}), "dup")
+end)
+
+test("@ref: combined with and/or operators", function()
+    eq(P("[if:chapter_title_1!=@title and series]%S \xC2\xB7 %C1[/if]",
+         {chapter_title_1="Part 1", title="My Book", series="Saga #1"}), "%S \xC2\xB7 %C1")
+    eq(P("[if:chapter_title_1!=@title and series]%S \xC2\xB7 %C1[/if]",
+         {chapter_title_1="My Book", title="My Book", series="Saga #1"}), "")
+end)
+
+test("@ref: v5 state keys resolve via alias on ref lookup", function()
+    -- @chapters (legacy name) should find state.chap_count via STATE_ALIAS
+    eq(P("[if:chap_num=@chapters]last[/if]", {chap_num=10, chap_count=10}), "last")
 end)
 
 io.stdout:write(string.format("%d passed, %d failed\n", pass, fail))
