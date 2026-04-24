@@ -213,7 +213,7 @@ function Bookends:showTokenPicker(on_select)
             end
             IconPicker.showPickerMenu(_("Insert conditional"), cond_items, function(item)
                 on_select(item.insert_value)
-            end)
+            end, { width_pct = 0.9 })
         end,
     })
 
