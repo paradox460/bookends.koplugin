@@ -647,6 +647,64 @@ function Bookends:loadSettings()
             self.settings:saveSetting("progress_bar_" .. i, bar)
         end
     end
+
+    self:migrateSchemaIfNeeded()
+end
+
+--- One-shot migration of persisted preset/position data to the current
+--- Config.SCHEMA_VERSION. Runs at load time; cheap no-op once schema_version
+--- is up to date. Walks live self.positions + every saved preset file on
+--- disk, canonicalising any legacy tokens to their v5 equivalents.
+--- The render-level alias table still handles legacy tokens forever for
+--- gallery presets, so this migration is a local-data cleanup — not load-
+--- bearing for compatibility.
+function Bookends:migrateSchemaIfNeeded()
+    local stored = self.settings:readSetting("schema_version") or 1
+    if stored >= Config.SCHEMA_VERSION then return end
+
+    -- Migrate live positions + their saved copies in self.settings.
+    for _, pos in ipairs(self.POSITIONS) do
+        local pos_settings = self.positions[pos.key]
+        if pos_settings and pos_settings.lines then
+            local changed = false
+            for i, line in ipairs(pos_settings.lines) do
+                local new_line = Tokens.canonicaliseLegacy(line or "")
+                if new_line ~= line then
+                    pos_settings.lines[i] = new_line
+                    changed = true
+                end
+            end
+            if changed then
+                self.settings:saveSetting("pos_" .. pos.key, pos_settings)
+            end
+        end
+    end
+
+    -- Migrate on-disk preset files one-shot. Defensive: skip files that
+    -- already declare schema_version >= current, so we don't rewrite files
+    -- that somehow got ahead of our session (e.g. sync from another device).
+    local preset_infos = self:readPresetFiles() or {}
+    for _, info in ipairs(preset_infos) do
+        local data = self.loadPresetFile(info.path)
+        if data then
+            local file_version = tonumber(data.schema_version) or 1
+            if file_version < Config.SCHEMA_VERSION then
+                if type(data.positions) == "table" then
+                    for _pos_key, pos_data in pairs(data.positions) do
+                        if type(pos_data) == "table" and type(pos_data.lines) == "table" then
+                            for i, line in ipairs(pos_data.lines) do
+                                pos_data.lines[i] = Tokens.canonicaliseLegacy(line or "")
+                            end
+                        end
+                    end
+                end
+                data.schema_version = Config.SCHEMA_VERSION
+                self:updatePresetFile(info.filename, data.name or info.filename, data)
+            end
+        end
+    end
+
+    self.settings:saveSetting("schema_version", Config.SCHEMA_VERSION)
 end
 
 function Bookends:buildPreset()
@@ -666,6 +724,7 @@ function Bookends:buildPreset()
     for _, key in ipairs(Config.PRESET_OPTIONAL_KEYS) do
         preset[key] = self.settings:readSetting(key)
     end
+    preset.schema_version = Config.SCHEMA_VERSION
     return preset
 end
 

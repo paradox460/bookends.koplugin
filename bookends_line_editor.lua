@@ -43,15 +43,10 @@ function LineEditor.attach(Bookends)
 
         local pos_settings = self.positions[pos.key]
 
-        local current_text = Tokens.canonicaliseLegacy(pos_settings.lines[line_idx] or "")
-
-        -- Migrate stored text on open. canonicaliseLegacy is semantically a
-        -- no-op (aliases render both forms identically), so we always persist
-        -- the v5 form — no Cancel-revert needed for this transformation.
-        if current_text ~= (pos_settings.lines[line_idx] or "") then
-            pos_settings.lines[line_idx] = current_text
-            self:markDirty()
-        end
+        -- Stored text is guaranteed to be on the current schema (v5) because
+        -- migrateSchemaIfNeeded ran at startup. No per-open canonicalise
+        -- needed; the editor just shows whatever is stored.
+        local current_text = pos_settings.lines[line_idx] or ""
 
         -- Per-line style state
         pos_settings.line_style = pos_settings.line_style or {}
