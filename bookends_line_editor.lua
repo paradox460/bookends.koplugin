@@ -318,7 +318,8 @@ function LineEditor.attach(Bookends)
                 {
                     text = _("Cancel"),
                     callback = function()
-                        self._live_edit_mode = nil
+                        self._live_edit_position = nil
+                        self._live_edit_line_idx = nil
                         self.positions[pos.key] = util.tableDeepCopy(original_settings)
                         self:savePositionSetting(pos.key)
                         UIManager:close(format_dialog)
@@ -351,7 +352,8 @@ function LineEditor.attach(Bookends)
                     text = _("Save"),
                     is_enter_default = true,
                     callback = function()
-                        self._live_edit_mode = nil
+                        self._live_edit_position = nil
+                        self._live_edit_line_idx = nil
                         local new_text = format_dialog:getInputText()
                         if new_text == "" then
                             table.remove(pos_settings.lines, line_idx)
@@ -385,7 +387,8 @@ function LineEditor.attach(Bookends)
         local input_text_height = measure:getLineHeight() * 2
         measure:free(true)
 
-        self._live_edit_mode = true
+        self._live_edit_position = pos.key
+        self._live_edit_line_idx = line_idx
         format_dialog = InputDialog:new{
             title = pos.label .. " \xE2\x80\x94 " .. _("Line") .. " " .. line_idx,
             input = current_text,

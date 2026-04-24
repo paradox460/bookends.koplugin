@@ -1223,10 +1223,15 @@ function Bookends:_paintToInner(bb, x, y)
                 local final_indices = {}
                 local position_bars = {}
                 for j, line in ipairs(visible_lines) do
+                    -- Only the line currently open in the editor uses legacy_literal,
+                    -- so typing %c mid-word doesn't flicker. All other lines render
+                    -- normally, including legacy tokens in the same preset.
+                    local is_edit_line = self._live_edit_position == pos.key
+                        and self._live_edit_line_idx == visible_indices[j]
                     local result, is_empty, line_bar = Tokens.expand(line, self.ui, session_elapsed, session_pages,
                         nil, self.settings:readSetting("tick_width_multiplier", self.DEFAULT_TICK_WIDTH_MULTIPLIER),
                         symbol_color, paint_ctx,
-                        { legacy_literal = self._live_edit_mode or false })
+                        { legacy_literal = is_edit_line })
                     if not is_empty then
                         table.insert(expanded_lines, result)
                         table.insert(final_indices, visible_indices[j])
