@@ -151,14 +151,33 @@ function Bookends:buildTokenItems(catalog, on_select)
                     current = expanded
                 end
             end
-            local display = token .. "  " .. desc
-            if current ~= "" then
-                display = display .. "  \xE2\x86\x92 " .. current  -- → arrow
+            if desc == "" then
+                -- Snippet row (category "Snippets"): the "token" field is an
+                -- entire format-string template. Keep the legacy single-line
+                -- display — the template itself is the primary label.
+                local display = token
+                if current ~= "" and current ~= token then
+                    display = display .. "  \xE2\x86\x92 " .. current
+                end
+                table.insert(items, {
+                    text = display,
+                    insert_value = token,
+                })
+            else
+                -- Regular token row: description is the primary scannable
+                -- label. Token syntax + current value sit right-aligned and
+                -- dim so the description isn't competing for attention.
+                local mandatory = token
+                if current ~= "" then
+                    mandatory = token .. "  \xE2\x86\x92 " .. current
+                end
+                table.insert(items, {
+                    text = desc,
+                    mandatory = mandatory,
+                    mandatory_dim = true,
+                    insert_value = token,
+                })
             end
-            table.insert(items, {
-                text = display,
-                insert_value = token,
-            })
         end
     end
     return items
