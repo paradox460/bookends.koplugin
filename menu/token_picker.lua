@@ -164,16 +164,17 @@ function Bookends:buildTokenItems(catalog, on_select)
                     insert_value = token,
                 })
             else
-                -- Regular token row: description is the primary scannable
-                -- label. Token syntax + current value sit right-aligned and
-                -- dim so the description isn't competing for attention.
-                local mandatory = token
-                if current ~= "" then
-                    mandatory = token .. "  \xE2\x86\x92 " .. current
-                end
+                -- Regular token / conditional row: description is the primary
+                -- scannable label. The token syntax is intentionally hidden
+                -- from the picker — users tap to insert, they don't copy the
+                -- syntax by eye. Mandatory carries only the live value (if
+                -- any), so it stays short enough to fit without squeezing
+                -- the description column or tripping KOReader's TextWidget
+                -- on zero-width rendering (see crash.log entry for long
+                -- conditional expressions overflowing mandatory_w).
                 table.insert(items, {
                     text = desc,
-                    mandatory = mandatory,
+                    mandatory = current ~= "" and ("\xE2\x86\x92 " .. current) or nil,
                     mandatory_dim = true,
                     insert_value = token,
                 })
