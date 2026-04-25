@@ -3,6 +3,7 @@
 -- runtime via the alias table in bookends_tokens.lua, but aren't listed here.
 local Tokens = require("bookends_tokens")
 local UIManager = require("ui/uimanager")
+local Utils = require("bookends_utils")
 local _ = require("bookends_i18n").gettext
 
 return function(Bookends)
@@ -149,7 +150,13 @@ function Bookends:buildTokenItems(catalog, on_select)
                 local expanded = Tokens.expand(token, self.ui, session_elapsed, session_pages,
                     nil, self.settings:readSetting("tick_width_multiplier", self.DEFAULT_TICK_WIDTH_MULTIPLIER))
                 if expanded and expanded ~= "" and expanded ~= token then
-                    current = expanded
+                    -- Hard cap: Menu's `mandatory` column is sized for
+                    -- bounded metadata (file size, page number) — overflow
+                    -- crashes xtext's makeLine via setMaxWidth(negative).
+                    -- A short fixed cap is safe across every device, font,
+                    -- and DPI; the preview's job is recognition, not full
+                    -- display.
+                    current = Utils.truncateUtf8(expanded, 25)
                 end
             end
             if desc == "" then
